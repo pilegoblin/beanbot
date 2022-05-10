@@ -68,7 +68,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func containsURL(message string) (bool, string) {
-	expr, err := regexp.Compile(`(https:\/\/)?((www|vm)\.)(tiktok\.com\/)[a-zA-Z0-9@_\.]{1,20}\/?(video\/[0-9]{1,20})?`)
+	expr, err := regexp.Compile(`(https:\/\/)?((www|vm)\.)(tiktok\.com\/)[a-zA-Z0-9@_\.]*\/?(video\/[0-9]{1,20})?`)
 
 	if err != nil {
 		fmt.Println(err)
