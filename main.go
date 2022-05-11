@@ -62,7 +62,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if err != nil {
 			fmt.Print(err)
 		}
-		s.ChannelMessageDelete(m.ChannelID, m.ID)
+		// remove embed
+		_, err = s.Request("PATCH", discordgo.EndpointChannelMessage(m.ChannelID, m.ID), map[string]any{"flags": 4})
+
+		if err != nil {
+			fmt.Print(err)
+		}
 
 	}
 }
@@ -73,7 +78,6 @@ func containsURL(message string) (bool, string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	//fmt.Println(expr.FindString(message))
 	return expr.MatchString(message), expr.FindString(message)
 
 }
@@ -120,22 +124,37 @@ func downloadTikTok(URL string, s *discordgo.Session, m *discordgo.MessageCreate
 	file, err := os.Open(vidID)
 	if err != nil {
 		return err
-	} else {
-		defer file.Close()
 	}
 
-	message := &discordgo.MessageSend{
-		Content: "Sent by " + m.Member.Nick,
+	finfo, err2 := (*file).Stat()
+
+	if err2 != nil {
+		return err2
+	}
+
+	if finfo.Size() >= 10485760 {
+		s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
+			Title: "video too beeg :( watch here",
+			URL:   fullURL,
+		})
+		return err
+	} else {
+		sendVid(s, m.ChannelID, file, vidID)
+		file.Close()
+		err = os.Remove(vidID)
+
+		return err
+	}
+
+}
+
+func sendVid(s *discordgo.Session, channelID string, file *os.File, vidID string) {
+	s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Files: []*discordgo.File{
 			{
 				Name:   vidID,
 				Reader: file,
 			},
 		},
-	}
-	s.ChannelMessageSendComplex(m.ChannelID, message)
-
-	err = os.Remove(vidID)
-
-	return err
+	})
 }
