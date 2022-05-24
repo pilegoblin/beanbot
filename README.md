@@ -7,3 +7,4 @@ Beanbot is in very early stages and the code looks awful. Please view and use wi
 ## TODO:
 
 - Handle all of the errors correctly (currently a mess and looks bad)
+- The bot currently just hard crashes if fed a bad url, need to fix that!
