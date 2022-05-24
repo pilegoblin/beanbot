@@ -13,7 +13,7 @@ import (
 )
 
 func containsURL(message string) (bool, string) {
-	expr, err := regexp.Compile(`(https:\/\/)?((www|vm)\.)(tiktok\.com\/)[a-zA-Z0-9@_\.]*\/?(video\/[0-9]{1,20})?`)
+	expr, err := regexp.Compile(`(https:\/\/)?((www|vm)\.)(tiktok\.com\/)[a-zA-Z0-9@_\.]*\/?(video\/[0-9]{1,20})?[a-zA-Z0-9@_\.]*\/?`)
 
 	if err != nil {
 		fmt.Println(err)
