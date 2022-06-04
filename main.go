@@ -27,6 +27,8 @@ func main() {
 		return
 	}
 
+	dg.AddHandler(ready)
+
 	dg.AddHandler(messageCreate)
 
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
@@ -43,6 +45,10 @@ func main() {
 	<-sc
 
 	dg.Close()
+}
+
+func ready(s *discordgo.Session, event *discordgo.Ready) {
+	s.UpdateGameStatus(0, "with my beans")
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
