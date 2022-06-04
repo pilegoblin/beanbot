@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,19 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/gocolly/colly"
 )
+
+//this looks bad but I think it's correct
+
+type TiktokData struct {
+	ItemList struct {
+		Video struct {
+			PreloadList []struct {
+				URL string `json:"url,omitempty"`
+				ID  string `json:"id,omitempty"`
+			} `json:"preloadList"`
+		} `json:"video"`
+	} `json:"ItemList"`
+}
 
 func containsURL(message string) (bool, string) {
 	expr, err := regexp.Compile(`(https:\/\/)?((www|vm)\.)(tiktok\.com\/)[a-zA-Z0-9@_\.\/]*`)
@@ -22,7 +36,7 @@ func containsURL(message string) (bool, string) {
 
 }
 
-func scrape(tiktok string) (string, string) {
+func scrape(tiktok string) (string, string, error) {
 	fullURL := ""
 	vidID := ""
 	c := colly.NewCollector(
@@ -31,18 +45,41 @@ func scrape(tiktok string) (string, string) {
 	)
 
 	c.OnHTML("script[id=SIGI_STATE]", func(e *colly.HTMLElement) {
-		var data any
-		json.Unmarshal([]byte(e.Text), &data)
-		fullURL = data.(map[string]any)["ItemList"].(map[string]any)["video"].(map[string]any)["preloadList"].([]any)[0].(map[string]any)["url"].(string)
-		vidID = data.(map[string]any)["ItemList"].(map[string]any)["video"].(map[string]any)["preloadList"].([]any)[0].(map[string]any)["id"].(string)
+		data := TiktokData{}
+		err := json.Unmarshal([]byte(e.Text), &data)
+
+		if err != nil {
+			return
+		}
+
+		if len(data.ItemList.Video.PreloadList) != 1 {
+			return
+		}
+
+		fullURL = data.ItemList.Video.PreloadList[0].URL
+		vidID = data.ItemList.Video.PreloadList[0].ID
 	})
 
-	c.Visit(tiktok)
-	return fullURL, vidID
+	err := c.Visit(tiktok)
+
+	if err != nil {
+		return fullURL, vidID, err
+	}
+
+	if fullURL == "" {
+		return fullURL, vidID, errors.New("no URL found")
+	}
+
+	return fullURL, vidID, nil
 }
 
 func downloadTikTok(URL string, s *discordgo.Session, m *discordgo.MessageCreate) error {
-	fullURL, vidID := scrape(URL)
+	fullURL, vidID, err := scrape(URL)
+
+	if err != nil {
+		return err
+	}
+
 	vidID = vidID + ".mp4"
 	resp, err := http.Get(fullURL)
 	if err != nil {
