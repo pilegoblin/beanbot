@@ -37,7 +37,7 @@ func main() {
 		return
 	}
 
-	fmt.Println("beanbot online")
+	fmt.Println("Beanbot Active")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
@@ -55,13 +55,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if isTikTok {
 		err := downloadTikTok(URL, s, m)
 		if err != nil {
-			fmt.Print(err)
+			fmt.Println(err)
+			// just returning to not crash the bot or anything
+			// leaves the message in-tact and doesn't remove the embed
+			return
 		}
 		// remove embed
 		_, err = s.Request("PATCH", discordgo.EndpointChannelMessage(m.ChannelID, m.ID), map[string]any{"flags": 4})
 
 		if err != nil {
-			fmt.Print(err)
+			fmt.Println("unable to remove embed:", err)
+			return
 		}
 
 	}

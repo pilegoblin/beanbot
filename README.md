@@ -4,7 +4,6 @@ Beanbot is a Discord bot that currently just takes TikTok links and sends the ra
 
 Beanbot is in very early stages and the code looks awful. Please view and use with caution.
 
-## TODO:
+## TODO
 
-- Handle all of the errors correctly (currently a mess and looks bad)
-- The bot currently just hard crashes if fed a bad url, need to fix that!
+- Make errors better and more descriptive
