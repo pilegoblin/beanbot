@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,18 +9,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var (
-	Token string
-)
-
-func init() {
-
-	flag.StringVar(&Token, "t", "", "Bot Token")
-	flag.Parse()
-}
-
 func main() {
-	dg, err := discordgo.New("Bot " + Token)
+	token := os.Getenv("BEANBOT_TOKEN")
+	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		fmt.Println("error creating Discord session,", err)
 		return
