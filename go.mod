@@ -1,6 +1,6 @@
 module github.com/crims1n/beanbot
 
-go 1.18
+go 1.22
 
 require (
 	github.com/bwmarrin/discordgo v0.25.0
