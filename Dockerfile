@@ -1,15 +1,12 @@
-FROM golang:1.19.3-bullseye
+FROM golang:latest
 
 WORKDIR /app
 
-ENV BEANBOT_TOKEN=put_token_here
+COPY cmd/ ./cmd/
+COPY go.mod .
+COPY go.sum .
+COPY .env .
 
-COPY go.mod ./
-COPY go.sum ./
-RUN go mod download
+RUN go build -o beanbot ./cmd/bot
 
-COPY *.go ./
-
-RUN go build -o /beanbot
-
-CMD [ "/beanbot" ]
+CMD [ "./beanbot" ]
