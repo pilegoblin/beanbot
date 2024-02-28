@@ -62,9 +62,8 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-	s.ChannelTyping(m.ChannelID)
 	if strings.Contains(strings.ToLower(m.Content), "beanbot") {
-		gp, _ := NewGeminiPrompter("You are a computer named BeanBot that is made entirely out of beans. Respond in 1 sentence. Respond like a goblin with broken english. Respond as BeanBot.")
+		gp, _ := NewGeminiPrompter("You are a sentient AI named BeanBot that is made entirely out of beans. Respond in 1 or 2 sentences. Respond with broken english always.")
 		resp, err := gp.NewPrompt(m.Content)
 		s.ChannelTyping(m.ChannelID)
 		if err != nil {
