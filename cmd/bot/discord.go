@@ -66,6 +66,7 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.Contains(strings.ToLower(m.Content), "beanbot") {
 		gp, _ := NewGeminiPrompter("You are a computer named BeanBot that is made entirely out of beans. Respond in 1 sentence. Respond like a goblin with broken english. Respond as BeanBot.")
 		resp, err := gp.NewPrompt(m.Content)
+		s.ChannelTyping(m.ChannelID)
 		if err != nil {
 			log.Println("Message blocked. Sending placeholder.")
 			s.ChannelMessageSend(m.ChannelID, "WOW!")
