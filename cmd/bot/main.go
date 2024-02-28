@@ -1,51 +1,27 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
+	"log"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	token := os.Getenv("BEANBOT_TOKEN")
-	dg, err := discordgo.New("Bot " + token)
+	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("error creating Discord session,", err)
-		return
+		log.Fatal("Error loading .env file")
 	}
 
-	dg.AddHandler(ready)
-
-	dg.AddHandler(messageCreate)
-
-	dg.Identify.Intents = discordgo.IntentsGuildMessages
-
-	err = dg.Open()
+	bb, err := NewBot()
 	if err != nil {
-		fmt.Println("error opening connection,", err)
-		return
+		log.Fatal(err)
 	}
 
-	fmt.Println("Beanbot Active")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
+	bb.SetStatus("with my beans")
 
-	dg.Close()
-}
-
-func ready(s *discordgo.Session, event *discordgo.Ready) {
-	s.UpdateGameStatus(0, "with my beans")
-}
-
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-
-	if m.Author.ID == s.State.User.ID {
-		return
+	err = bb.Start()
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	fmt.Println(m.Content)
+	log.Println("BeanBot has exited.")
 }
