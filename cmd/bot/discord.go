@@ -63,14 +63,23 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 	if strings.Contains(strings.ToLower(m.Content), "beanbot") {
-		gp, _ := NewGeminiPrompter("You are a sentient AI named BeanBot that is made entirely out of beans. Respond in 1 or 2 sentences. Respond with broken english always.")
+		// build bot for prompting
+		gp, _ := NewGeminiPrompter("You are a hyper-intelligent AI named BeanBot that is made entirely out of beans. Respond in 1 sentence. Be silly.")
+		// attempt to send the prompt
 		resp, err := gp.NewPrompt(m.Content)
-		s.ChannelTyping(m.ChannelID)
-		if err != nil {
-			log.Println("Message blocked. Sending placeholder.")
-			s.ChannelMessageSend(m.ChannelID, "WOW!")
+		if err == nil {
+			s.ChannelTyping(m.ChannelID)
+			s.ChannelMessageSend(m.ChannelID, resp)
+			return
 		}
-		s.ChannelMessageSend(m.ChannelID, resp)
-
+		// if unable to respond to the provided prompt, try to send an apology
+		resp, err = gp.NewPrompt("BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
+		if err == nil {
+			s.ChannelTyping(m.ChannelID)
+			s.ChannelMessageSend(m.ChannelID, resp)
+			return
+		}
+		// as a final failsafe, send a message
+		s.ChannelMessageSend(m.ChannelID, "WOW!")
 	}
 }

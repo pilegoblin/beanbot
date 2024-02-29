@@ -34,7 +34,7 @@ func (gp GeminiPrompter) NewPrompt(prompt string) (string, error) {
 	defer client.Close()
 	model := client.GenerativeModel("gemini-pro")
 
-	prompt = gp.backstory + "Respond to the following prompt as this character:\n\n" + prompt
+	prompt = gp.backstory + "Respond to the following message:\n\n" + prompt
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
