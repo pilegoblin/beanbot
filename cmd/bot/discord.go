@@ -64,7 +64,13 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	if strings.Contains(strings.ToLower(m.Content), "beanbot") {
 		// build bot for prompting
-		gp, _ := NewGeminiPrompter("You are a hyper-intelligent AI named BeanBot that is made entirely out of beans. Respond in 1 sentence. Be silly.")
+		gp, err := NewGeminiPrompter("You are a hyper-intelligent AI named BeanBot that is made entirely out of beans. " +
+			"Respond in 1 sentence. Be silly.")
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
 		// attempt to send the prompt
 		resp, err := gp.NewPrompt(m.Content)
 		if err == nil {
