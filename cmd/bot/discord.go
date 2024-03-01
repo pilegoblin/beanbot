@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -73,18 +74,28 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// attempt to send the prompt
 		resp, err := gp.NewPrompt(m.Content)
 		if err == nil {
-			s.ChannelTyping(m.ChannelID)
-			s.ChannelMessageSend(m.ChannelID, resp)
+			TypeAndSend(s, m.ChannelID, resp)
 			return
 		}
 		// if unable to respond to the provided prompt, try to send an apology
 		resp, err = gp.NewPrompt("BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
 		if err == nil {
-			s.ChannelTyping(m.ChannelID)
-			s.ChannelMessageSend(m.ChannelID, resp)
+			TypeAndSend(s, m.ChannelID, resp)
 			return
 		}
 		// as a final failsafe, send a message
-		s.ChannelMessageSend(m.ChannelID, "WOW!")
+		TypeAndSend(s, m.ChannelID, "ERROR! ERROR!")
+	}
+}
+
+func TypeAndSend(s *discordgo.Session, channelID string, message string) {
+	if err := s.ChannelTyping(channelID); err != nil {
+		log.Println(err)
+	}
+
+	time.Sleep(time.Second)
+
+	if _, err := s.ChannelMessageSend(channelID, message); err != nil {
+		log.Println(err)
 	}
 }
