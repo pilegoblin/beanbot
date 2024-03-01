@@ -63,29 +63,33 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-	if strings.Contains(strings.ToLower(m.Content), "beanbot") {
-		// build bot for prompting
-		gp, err := NewGeminiPrompter("You are a sassy, intelligent, AI robot that is made entirely out of beans. Your name is BeanBot. Respond with poor grammar always. Respond in 1 sentence.")
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		// attempt to send the prompt
-		resp, err := gp.NewPrompt(m.Content)
-		if err == nil {
-			TypeAndSend(s, m.ChannelID, resp)
-			return
-		}
-		// if unable to respond to the provided prompt, try to send an apology
-		resp, err = gp.NewPrompt("BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
-		if err == nil {
-			TypeAndSend(s, m.ChannelID, resp)
-			return
-		}
-		// as a final failsafe, send a message
-		TypeAndSend(s, m.ChannelID, "ERROR! ERROR!")
+	if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
+		return
 	}
+
+	// create the bot instance
+	gp, err := NewGeminiPrompter("You are a silly clown goblin AI robot that is made entirely out of beans. Your name is BeanBot. You love beans more than anything. Respond with broken english. Respond in 1 sentence.")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// generate the prompt
+	resp, err := gp.NewPrompt(m.Content)
+	if err == nil {
+		TypeAndSend(s, m.ChannelID, resp)
+		return
+	}
+
+	// if unable generate a prompt, generate a fallback
+	resp, err = gp.NewPrompt("BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
+	if err == nil {
+		TypeAndSend(s, m.ChannelID, resp)
+		return
+	}
+
+	// as a final failsafe, send an "error message"
+	TypeAndSend(s, m.ChannelID, "ERROR! ERROR!")
 }
 
 func TypeAndSend(s *discordgo.Session, channelID string, message string) {
@@ -93,6 +97,7 @@ func TypeAndSend(s *discordgo.Session, channelID string, message string) {
 		log.Println(err)
 	}
 
+	// added delay so users see BeanBot typing for a second
 	time.Sleep(time.Second)
 
 	if _, err := s.ChannelMessageSend(channelID, message); err != nil {
