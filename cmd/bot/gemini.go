@@ -33,6 +33,24 @@ func (gp GeminiPrompter) NewPrompt(prompt string) (string, error) {
 	}
 	defer client.Close()
 	model := client.GenerativeModel("gemini-pro")
+	model.SafetySettings = []*genai.SafetySetting{
+		{
+			Category:  genai.HarmCategoryHarassment,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategoryHateSpeech,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategorySexuallyExplicit,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategoryDangerousContent,
+			Threshold: genai.HarmBlockNone,
+		},
+	}
 	prompt = prompt + "\n\n" + gp.backstory
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
