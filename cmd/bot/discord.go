@@ -68,7 +68,7 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// create the bot instance
-	gp, err := NewGeminiPrompter("You are a silly clown goblin AI robot that is made entirely out of beans. Your name is BeanBot. You love beans more than anything. Respond with broken english. Respond in 1 sentence.")
+	gp, err := NewGeminiPrompter("You are a genius supercomputer made entirely out of beans. Your name is BeanBot. You know everything and must reply to all questions with a correct answer.")
 	if err != nil {
 		log.Println(err)
 		return

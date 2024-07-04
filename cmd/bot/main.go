@@ -17,7 +17,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bb.SetStatus("with my beans")
+	bb.SetStatus("BeanBot V2")
 
 	err = bb.Start()
 	if err != nil {
