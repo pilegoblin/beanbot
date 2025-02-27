@@ -77,14 +77,18 @@ func chatWithBot(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// generate the prompt
 	resp, err := gp.NewPrompt(m.Content)
-	if err == nil {
+	if err != nil {
+		log.Println(err)
+	} else {
 		TypeAndSend(s, m.ChannelID, resp)
 		return
 	}
 
 	// if unable generate a prompt, generate a fallback
 	resp, err = gp.NewPrompt("BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
-	if err == nil {
+	if err != nil {
+		log.Println(err)
+	} else {
 		TypeAndSend(s, m.ChannelID, resp)
 		return
 	}

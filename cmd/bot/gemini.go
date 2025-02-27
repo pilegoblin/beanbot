@@ -32,7 +32,7 @@ func (gp GeminiPrompter) NewPrompt(prompt string) (string, error) {
 		return "", err
 	}
 	defer client.Close()
-	model := client.GenerativeModel("gemini-pro")
+	model := client.GenerativeModel("gemini-2.0-flash")
 	model.SafetySettings = []*genai.SafetySetting{
 		{
 			Category:  genai.HarmCategoryHarassment,
