@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/joho/godotenv"
@@ -12,12 +13,12 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	bb, err := NewBot()
+	bb, err := NewBot(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	bb.SetStatus("BeanBot V2")
+	bb.SetStatus("BeanBot")
 
 	err = bb.Start()
 	if err != nil {

@@ -5,9 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
+)
+
+var (
+	gemOnce sync.Once
+	session *genai.ChatSession
 )
 
 type GeminiPrompter struct {
@@ -25,44 +31,59 @@ func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
 
 }
 
-func (gp GeminiPrompter) NewPrompt(prompt string) (string, error) {
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(gp.secretKey))
-	if err != nil {
-		return "", err
+func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string, error) {
+	if gp.backstory == "" {
+		return nil, errors.New("backstory is empty")
 	}
-	defer client.Close()
-	model := client.GenerativeModel("gemini-2.0-flash")
-	model.SafetySettings = []*genai.SafetySetting{
-		{
-			Category:  genai.HarmCategoryHarassment,
-			Threshold: genai.HarmBlockNone,
-		},
-		{
-			Category:  genai.HarmCategoryHateSpeech,
-			Threshold: genai.HarmBlockNone,
-		},
-		{
-			Category:  genai.HarmCategorySexuallyExplicit,
-			Threshold: genai.HarmBlockNone,
-		},
-		{
-			Category:  genai.HarmCategoryDangerousContent,
-			Threshold: genai.HarmBlockNone,
-		},
-	}
-	prompt = prompt + "\n\n" + gp.backstory
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if prompt == "" {
+		return nil, errors.New("prompt is empty")
+	}
+
+	gemOnce.Do(func() {
+		client, err := genai.NewClient(ctx, option.WithAPIKey(gp.secretKey))
+		if err != nil {
+			panic(err)
+		}
+		model := client.GenerativeModel("gemini-2.0-flash")
+		model.SafetySettings = []*genai.SafetySetting{
+			{
+				Category:  genai.HarmCategoryHarassment,
+				Threshold: genai.HarmBlockNone,
+			},
+			{
+				Category:  genai.HarmCategoryHateSpeech,
+				Threshold: genai.HarmBlockNone,
+			},
+			{
+				Category:  genai.HarmCategorySexuallyExplicit,
+				Threshold: genai.HarmBlockNone,
+			},
+			{
+				Category:  genai.HarmCategoryDangerousContent,
+				Threshold: genai.HarmBlockNone,
+			},
+		}
+
+		session = model.StartChat()
+
+		// send the backstory once
+		_, err = session.SendMessage(ctx, genai.Text(gp.backstory))
+		if err != nil {
+			panic(err)
+		}
+	})
+
+	resp, err := session.SendMessage(ctx, genai.Text(prompt))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	fullResponse := ""
 	parts := resp.Candidates[0].Content.Parts
 	for _, part := range parts {
-		fullResponse += fmt.Sprint(part)
+		fullResponse += fmt.Sprint(part.(genai.Text))
 	}
 
-	return fullResponse, nil
+	return &fullResponse, nil
 }
