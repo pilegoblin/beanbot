@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -15,6 +16,11 @@ import (
 type BeanBot struct {
 	session *discordgo.Session
 }
+
+var (
+	gemPrompter *GeminiPrompter
+	once        sync.Once
+)
 
 func NewBot(ctx context.Context) (*BeanBot, error) {
 	key, ok := os.LookupEnv("DISCORD_API_KEY")
@@ -61,23 +67,28 @@ func (bb *BeanBot) SetStatus(status string) {
 
 func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.MessageCreate) {
 	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		once.Do(func() {
+			// create the bot instance
+			g, err := NewGeminiPrompter("You are a genius supercomputer made entirely out of beans. Your name is BeanBot. " +
+				"You are a helpful assistant. Talk like a huge nerd. Keep responses short.")
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			gemPrompter = g
+		})
 		if m.Author.ID == s.State.User.ID {
 			return
+		}
+		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
+			gemPrompter.ResetSession(ctx)
 		}
 		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
 		}
 
-		// create the bot instance
-		gp, err := NewGeminiPrompter("You are a genius supercomputer made entirely out of beans. Your name is BeanBot. " +
-			"You are a helpful assistant. Talk like a huge nerd. Keep responses short.")
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
 		// generate the prompt
-		resp, err := gp.NewPrompt(ctx, m.Content)
+		resp, err := gemPrompter.NewPrompt(ctx, m.Content)
 		if err != nil {
 			log.Println(err)
 		} else {
@@ -86,7 +97,7 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		}
 
 		// if unable generate a prompt, generate a fallback
-		resp, err = gp.NewPrompt(ctx, "BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
+		resp, err = gemPrompter.NewPrompt(ctx, "BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
 		if err != nil {
 			log.Println(err)
 		} else {

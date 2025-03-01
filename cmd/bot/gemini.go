@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	gemOnce sync.Once
-	session *genai.ChatSession
+	gemOnce   sync.Once
+	sessMutex sync.Mutex
+	session   *genai.ChatSession
 )
 
 type GeminiPrompter struct {
@@ -32,6 +33,8 @@ func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
 }
 
 func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string, error) {
+	sessMutex.Lock()
+	defer sessMutex.Unlock()
 	if gp.backstory == "" {
 		return nil, errors.New("backstory is empty")
 	}
@@ -41,37 +44,11 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 	}
 
 	gemOnce.Do(func() {
-		client, err := genai.NewClient(ctx, option.WithAPIKey(gp.secretKey))
+		s, err := gp.CreateSession(ctx)
 		if err != nil {
 			panic(err)
 		}
-		model := client.GenerativeModel("gemini-2.0-flash")
-		model.SafetySettings = []*genai.SafetySetting{
-			{
-				Category:  genai.HarmCategoryHarassment,
-				Threshold: genai.HarmBlockNone,
-			},
-			{
-				Category:  genai.HarmCategoryHateSpeech,
-				Threshold: genai.HarmBlockNone,
-			},
-			{
-				Category:  genai.HarmCategorySexuallyExplicit,
-				Threshold: genai.HarmBlockNone,
-			},
-			{
-				Category:  genai.HarmCategoryDangerousContent,
-				Threshold: genai.HarmBlockNone,
-			},
-		}
-
-		session = model.StartChat()
-
-		// send the backstory once
-		_, err = session.SendMessage(ctx, genai.Text(gp.backstory))
-		if err != nil {
-			panic(err)
-		}
+		session = s
 	})
 
 	resp, err := session.SendMessage(ctx, genai.Text(prompt))
@@ -86,4 +63,50 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 	}
 
 	return &fullResponse, nil
+}
+
+func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
+	sessMutex.Lock()
+	defer sessMutex.Unlock()
+	s, err := gp.CreateSession(ctx)
+	if err != nil {
+		return err
+	}
+	session = s
+	return nil
+}
+
+func (gp *GeminiPrompter) CreateSession(ctx context.Context) (*genai.ChatSession, error) {
+	client, err := genai.NewClient(ctx, option.WithAPIKey(gp.secretKey))
+	if err != nil {
+		return nil, err
+	}
+	model := client.GenerativeModel("gemini-2.0-flash")
+	model.SafetySettings = []*genai.SafetySetting{
+		{
+			Category:  genai.HarmCategoryHarassment,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategoryHateSpeech,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategorySexuallyExplicit,
+			Threshold: genai.HarmBlockNone,
+		},
+		{
+			Category:  genai.HarmCategoryDangerousContent,
+			Threshold: genai.HarmBlockNone,
+		},
+	}
+
+	s := model.StartChat()
+
+	// send the backstory once
+	_, err = s.SendMessage(ctx, genai.Text(gp.backstory))
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
