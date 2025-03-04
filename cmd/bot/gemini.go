@@ -59,7 +59,7 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 	fullResponse := ""
 	parts := resp.Candidates[0].Content.Parts
 	for _, part := range parts {
-		fullResponse += fmt.Sprint(part.(genai.Text))
+		fullResponse += fmt.Sprint(part)
 	}
 
 	return &fullResponse, nil
