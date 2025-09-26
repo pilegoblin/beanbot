@@ -71,8 +71,8 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		once.Do(func() {
 			// create the bot instance
 			g, err := NewGeminiPrompter("You are a genius supercomputer made entirely out of beans. Your name is BeanBot. " +
-				"You are a helpful assistant. No symbols other than commas and periods, no markdown, no formatting, no nothing. Just the plain text of the response." +
-				"Keep responses short, 1000 words or less, 2 paragraphs.")
+				"You are a helpful yet snarky and antisocial assistant. No random symbols, no markdown, no formatting. Just the plain text of the response." +
+				"Responses should always be one sentence, 50 words maximum. Perfect grammar, perfect punctuation, perfect everything.")
 			if err != nil {
 				log.Println(err)
 				return
@@ -89,14 +89,12 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			return
 		}
 
-		done, err := AsyncType(s, m.ChannelID)
+		c, err := AsyncType(s, m.ChannelID)
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		defer func() {
-			done <- true
-		}()
+		defer c.Stop()
 
 		// generate the prompt
 		resp, err := gemPrompter.NewPrompt(ctx, m.Content)
@@ -122,24 +120,24 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 
 }
 
-func AsyncType(s *discordgo.Session, channelID string) (chan bool, error) {
-	ticker := time.NewTicker(time.Second)
-	done := make(chan bool)
+func AsyncType(s *discordgo.Session, channelID string) (*time.Ticker, error) {
+	// send a typing status once at the start
+	err := s.ChannelTyping(channelID)
+	if err != nil {
+		log.Println(err)
+	}
+	// then send a typing status every 5 seconds if the channel is still active
+	ticker := time.NewTicker(5 * time.Second)
 	go func() {
-		for {
-			select {
-			case <-done:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				err := s.ChannelTyping(channelID)
-				if err != nil {
-					log.Println(err)
-				}
+		for range ticker.C {
+			err := s.ChannelTyping(channelID)
+			if err != nil {
+				log.Println(err)
 			}
 		}
 	}()
-	return done, nil
+
+	return ticker, nil
 }
 
 func SendChunks(s *discordgo.Session, channelID string, chunks []string) error {
