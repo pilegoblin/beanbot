@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -83,9 +84,18 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
 			gemPrompter.ResetSession(ctx)
 		}
-		if !strings.Contains(strings.ToLower(m.Content), "bb") {
+		if !strings.Contains(strings.ToLower(m.Content), "bb") || !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
 		}
+
+		done, err := AsyncType(s, m.ChannelID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer func() {
+			done <- true
+		}()
 
 		// generate the prompt
 		resp, err := gemPrompter.NewPrompt(ctx, m.Content)
@@ -94,11 +104,12 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			return
 		}
 
-		err = TypeAndSend(s, m.ChannelID, *resp)
-		if err == nil {
+		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, *resp); err != nil {
+			log.Println(err)
+		} else {
+			log.Println(sentMessage)
 			return
 		}
-		log.Println(err)
 
 		// if unable generate a prompt, generate a fallback
 		resp, err = gemPrompter.NewPrompt(ctx, "BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
@@ -106,25 +117,40 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			log.Println(err)
 			return
 		}
-		err = TypeAndSend(s, m.ChannelID, *resp)
-		if err == nil {
+		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, *resp); err != nil {
+			log.Println(err)
+		} else {
+			log.Println(sentMessage)
 			return
 		}
-		log.Println(err)
 
 		// as a final failsafe, send an "error message"
-		TypeAndSend(s, m.ChannelID, "ERROR! ERROR!")
+		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, "ERROR! ERROR!"); err != nil {
+			log.Println(err)
+		} else {
+			log.Println(sentMessage)
+			return
+		}
 	}
 
 }
 
-func TypeAndSend(s *discordgo.Session, channelID string, message string) error {
-	if err := s.ChannelTyping(channelID); err != nil {
-		log.Println(err)
-	}
-
-	if _, err := s.ChannelMessageSend(channelID, message); err != nil {
-		return err
-	}
-	return nil
+func AsyncType(s *discordgo.Session, channelID string) (chan bool, error) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-done:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				err := s.ChannelTyping(channelID)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}()
+	return done, nil
 }
