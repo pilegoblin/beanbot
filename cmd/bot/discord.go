@@ -71,7 +71,8 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		once.Do(func() {
 			// create the bot instance
 			g, err := NewGeminiPrompter("You are a genius supercomputer made entirely out of beans. Your name is BeanBot. " +
-				"You are a helpful assistant. Talk like a huge nerd. Keep responses short.")
+				"You are a helpful assistant. No symbols other than commas and periods, no markdown, no formatting, no nothing. Just the plain text of the response." +
+				"Keep responses short, 1000 words or less, 2 paragraphs.")
 			if err != nil {
 				log.Println(err)
 				return
@@ -84,7 +85,7 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
 			gemPrompter.ResetSession(ctx)
 		}
-		if !strings.Contains(strings.ToLower(m.Content), "bb") || !strings.Contains(strings.ToLower(m.Content), "beanbot") {
+		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
 		}
 
@@ -104,25 +105,11 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			return
 		}
 
-		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, *resp); err != nil {
-			log.Println(err)
-		} else {
-			log.Println(sentMessage)
+		err = SendChunks(s, m.ChannelID, resp)
+		if err == nil {
 			return
 		}
-
-		// if unable generate a prompt, generate a fallback
-		resp, err = gemPrompter.NewPrompt(ctx, "BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, *resp); err != nil {
-			log.Println(err)
-		} else {
-			log.Println(sentMessage)
-			return
-		}
+		log.Println(err)
 
 		// as a final failsafe, send an "error message"
 		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, "ERROR! ERROR!"); err != nil {
@@ -136,7 +123,7 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 }
 
 func AsyncType(s *discordgo.Session, channelID string) (chan bool, error) {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(time.Second)
 	done := make(chan bool)
 	go func() {
 		for {
@@ -153,4 +140,16 @@ func AsyncType(s *discordgo.Session, channelID string) (chan bool, error) {
 		}
 	}()
 	return done, nil
+}
+
+func SendChunks(s *discordgo.Session, channelID string, chunks []string) error {
+	for _, chunk := range chunks {
+		if chunk == "" {
+			continue
+		}
+		if _, err := s.ChannelMessageSend(channelID, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
 }
