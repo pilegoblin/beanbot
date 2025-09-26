@@ -83,7 +83,7 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
 			gemPrompter.ResetSession(ctx)
 		}
-		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
+		if !strings.Contains(strings.ToLower(m.Content), "bb") {
 			return
 		}
 
@@ -91,19 +91,26 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		resp, err := gemPrompter.NewPrompt(ctx, m.Content)
 		if err != nil {
 			log.Println(err)
-		} else {
-			TypeAndSend(s, m.ChannelID, *resp)
 			return
 		}
+
+		err = TypeAndSend(s, m.ChannelID, *resp)
+		if err == nil {
+			return
+		}
+		log.Println(err)
 
 		// if unable generate a prompt, generate a fallback
 		resp, err = gemPrompter.NewPrompt(ctx, "BeanBot, please say you're sorry and sincerely apologize for not being able to speak.")
 		if err != nil {
 			log.Println(err)
-		} else {
-			TypeAndSend(s, m.ChannelID, *resp)
 			return
 		}
+		err = TypeAndSend(s, m.ChannelID, *resp)
+		if err == nil {
+			return
+		}
+		log.Println(err)
 
 		// as a final failsafe, send an "error message"
 		TypeAndSend(s, m.ChannelID, "ERROR! ERROR!")
@@ -111,12 +118,13 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 
 }
 
-func TypeAndSend(s *discordgo.Session, channelID string, message string) {
+func TypeAndSend(s *discordgo.Session, channelID string, message string) error {
 	if err := s.ChannelTyping(channelID); err != nil {
 		log.Println(err)
 	}
 
 	if _, err := s.ChannelMessageSend(channelID, message); err != nil {
-		log.Println(err)
+		return err
 	}
+	return nil
 }
