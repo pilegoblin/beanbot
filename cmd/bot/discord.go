@@ -91,14 +91,27 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
 		}
-		if len(m.Attachments) > 0 {
+
+		if hasAllImageAttachments(m.Attachments) {
 			handleImage(ctx, s, m)
-			return
+		} else {
+			handleText(ctx, s, m)
 		}
-		handleText(ctx, s, m)
 
 	}
 
+}
+
+func hasAllImageAttachments(attachments []*discordgo.MessageAttachment) bool {
+	if len(attachments) == 0 {
+		return false
+	}
+	for _, attachment := range attachments {
+		if !strings.Contains(strings.ToLower(attachment.ContentType), "image") {
+			return false
+		}
+	}
+	return true
 }
 
 func handleImage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
