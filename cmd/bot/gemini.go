@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -34,7 +32,7 @@ func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
 
 }
 
-func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) ([]string, error) {
+func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
 	sessMutex.Lock()
 	defer sessMutex.Unlock()
 	if gp.backstory == "" {
@@ -53,16 +51,18 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) ([]string
 		chatSession = s
 	})
 
-	resp, err := chatSession.SendMessage(ctx, genai.Part{Text: prompt})
-	if err != nil {
-		return nil, err
+	parts := []genai.Part{
+		{Text: prompt},
 	}
 
-	jsonResp, err := json.Marshal(resp)
+	for _, imageByte := range imageBytes {
+		parts = append(parts, *genai.NewPartFromBytes(imageByte, "image/jpeg"))
+	}
+
+	resp, err := chatSession.SendMessage(ctx, parts...)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("jsonResp: %v\n", string(jsonResp))
 
 	fullResponse := resp.Text()
 	chunks := strings.Split(fullResponse, "\n")

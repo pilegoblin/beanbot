@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -79,6 +81,7 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			}
 			gemPrompter = g
 		})
+
 		if m.Author.ID == s.State.User.ID {
 			return
 		}
@@ -88,36 +91,86 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
 		}
-
-		c, err := AsyncType(s, m.ChannelID)
-		if err != nil {
-			log.Println(err)
+		if len(m.Attachments) > 0 {
+			handleImage(ctx, s, m)
 			return
 		}
-		defer c.Stop()
+		handleText(ctx, s, m)
 
-		// generate the prompt
-		resp, err := gemPrompter.NewPrompt(ctx, m.Content)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	}
 
-		err = SendChunks(s, m.ChannelID, resp)
-		if err == nil {
-			return
-		}
+}
+
+func handleImage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
+	c, err := AsyncType(s, m.ChannelID)
+	if err != nil {
 		log.Println(err)
+		return
+	}
+	defer c.Stop()
 
-		// as a final failsafe, send an "error message"
-		if sentMessage, err := s.ChannelMessageSend(m.ChannelID, "ERROR! ERROR!"); err != nil {
+	urls := make([]string, len(m.Attachments))
+	for i, attachment := range m.Attachments {
+		urls[i] = attachment.URL
+	}
+
+	imageBytes := make([][]byte, len(urls))
+	for i, url := range urls {
+		imageResp, err := http.Get(url)
+		if err != nil {
 			log.Println(err)
-		} else {
-			log.Println(sentMessage)
+			return
+		}
+		imageBytes[i], err = io.ReadAll(imageResp.Body)
+		if err != nil {
+			log.Println(err)
 			return
 		}
 	}
 
+	resp, err := gemPrompter.NewPrompt(ctx, m.Content, imageBytes...)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	err = SendChunks(s, m.ChannelID, resp)
+	if err == nil {
+		return
+	}
+	log.Println(err)
+
+}
+
+func handleText(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
+
+	c, err := AsyncType(s, m.ChannelID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer c.Stop()
+
+	// generate the prompt
+	resp, err := gemPrompter.NewPrompt(ctx, m.Content)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	err = SendChunks(s, m.ChannelID, resp)
+	if err == nil {
+		return
+	}
+	log.Println(err)
+
+	// as a final failsafe, send an "error message"
+	if sentMessage, err := s.ChannelMessageSend(m.ChannelID, "ERROR! ERROR!"); err != nil {
+		log.Println(err)
+	} else {
+		log.Println(sentMessage)
+		return
+	}
 }
 
 func AsyncType(s *discordgo.Session, channelID string) (*time.Ticker, error) {
