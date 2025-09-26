@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"google.golang.org/genai"
@@ -14,7 +16,7 @@ var (
 	gemOnce        sync.Once
 	sessMutex      sync.Mutex
 	chatSession    *genai.Chat
-	thinkingBudget = int32(5)
+	thinkingBudget = int32(0)
 )
 
 type GeminiPrompter struct {
@@ -32,7 +34,7 @@ func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
 
 }
 
-func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string, error) {
+func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) ([]string, error) {
 	sessMutex.Lock()
 	defer sessMutex.Unlock()
 	if gp.backstory == "" {
@@ -56,13 +58,16 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 		return nil, err
 	}
 
-	fullResponse := ""
-	parts := resp.Candidates[0].Content.Parts
-	for _, part := range parts {
-		fullResponse += fmt.Sprint(part.Text)
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
 	}
+	fmt.Printf("jsonResp: %v\n", string(jsonResp))
 
-	return &fullResponse, nil
+	fullResponse := resp.Text()
+	chunks := strings.Split(fullResponse, "\n")
+
+	return chunks, nil
 }
 
 func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
@@ -91,7 +96,6 @@ func (gp *GeminiPrompter) CreateChatSession(ctx context.Context) (*genai.Chat, e
 		ThinkingConfig: &genai.ThinkingConfig{
 			ThinkingBudget: &thinkingBudget,
 		},
-		MaxOutputTokens: 100,
 		SafetySettings: []*genai.SafetySetting{{
 			Category:  genai.HarmCategoryHarassment,
 			Threshold: genai.HarmBlockThresholdBlockNone,
