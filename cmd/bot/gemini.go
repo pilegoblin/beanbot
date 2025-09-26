@@ -7,19 +7,19 @@ import (
 	"os"
 	"sync"
 
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 var (
-	gemOnce   sync.Once
-	sessMutex sync.Mutex
-	session   *genai.ChatSession
+	gemOnce        sync.Once
+	sessMutex      sync.Mutex
+	chatSession    *genai.Chat
+	thinkingBudget = int32(5)
 )
 
 type GeminiPrompter struct {
 	secretKey string // GOOGLE_API_KEY
-	backstory string // context given to each prompt when making an answer
+	backstory string // context given at the start of each session
 }
 
 func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
@@ -44,14 +44,14 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 	}
 
 	gemOnce.Do(func() {
-		s, err := gp.CreateSession(ctx)
+		s, err := gp.CreateChatSession(ctx)
 		if err != nil {
 			panic(err)
 		}
-		session = s
+		chatSession = s
 	})
 
-	resp, err := session.SendMessage(ctx, genai.Text(prompt))
+	resp, err := chatSession.SendMessage(ctx, genai.Part{Text: prompt})
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 	fullResponse := ""
 	parts := resp.Candidates[0].Content.Parts
 	for _, part := range parts {
-		fullResponse += fmt.Sprint(part)
+		fullResponse += fmt.Sprint(part.Text)
 	}
 
 	return &fullResponse, nil
@@ -68,45 +68,53 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string) (*string,
 func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
 	sessMutex.Lock()
 	defer sessMutex.Unlock()
-	s, err := gp.CreateSession(ctx)
+	s, err := gp.CreateChatSession(ctx)
 	if err != nil {
 		return err
 	}
-	session = s
+	chatSession = s
 	return nil
 }
 
-func (gp *GeminiPrompter) CreateSession(ctx context.Context) (*genai.ChatSession, error) {
-	client, err := genai.NewClient(ctx, option.WithAPIKey(gp.secretKey))
+func (gp *GeminiPrompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) {
+
+	cc := &genai.ClientConfig{
+		APIKey: gp.secretKey,
+	}
+	client, err := genai.NewClient(ctx, cc)
 	if err != nil {
 		return nil, err
 	}
-	model := client.GenerativeModel("gemini-2.0-flash")
-	model.SafetySettings = []*genai.SafetySetting{
-		{
+
+	config := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(gp.backstory, genai.RoleUser),
+		ThinkingConfig: &genai.ThinkingConfig{
+			ThinkingBudget: &thinkingBudget,
+		},
+		MaxOutputTokens: 100,
+		SafetySettings: []*genai.SafetySetting{{
 			Category:  genai.HarmCategoryHarassment,
-			Threshold: genai.HarmBlockNone,
+			Threshold: genai.HarmBlockThresholdBlockNone,
 		},
-		{
-			Category:  genai.HarmCategoryHateSpeech,
-			Threshold: genai.HarmBlockNone,
-		},
-		{
-			Category:  genai.HarmCategorySexuallyExplicit,
-			Threshold: genai.HarmBlockNone,
-		},
-		{
-			Category:  genai.HarmCategoryDangerousContent,
-			Threshold: genai.HarmBlockNone,
+			{
+				Category:  genai.HarmCategoryHateSpeech,
+				Threshold: genai.HarmBlockThresholdBlockNone,
+			},
+			{
+				Category:  genai.HarmCategorySexuallyExplicit,
+				Threshold: genai.HarmBlockThresholdBlockNone,
+			},
+			{
+				Category:  genai.HarmCategoryDangerousContent,
+				Threshold: genai.HarmBlockThresholdBlockNone,
+			},
 		},
 	}
 
-	s := model.StartChat()
-
-	// send the backstory once
-	_, err = s.SendMessage(ctx, genai.Text(gp.backstory))
+	chat, err := client.Chats.Create(ctx, "gemini-2.5-flash", config, nil)
 	if err != nil {
 		return nil, err
 	}
-	return s, nil
+
+	return chat, nil
 }
