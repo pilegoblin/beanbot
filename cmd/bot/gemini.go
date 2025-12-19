@@ -10,16 +10,12 @@ import (
 	"google.golang.org/genai"
 )
 
-var (
-	gemOnce        sync.Once
-	sessMutex      sync.Mutex
-	chatSession    *genai.Chat
-	thinkingBudget = int32(0)
-)
-
 type GeminiPrompter struct {
-	secretKey string // GOOGLE_API_KEY
-	backstory string // context given at the start of each session
+	secretKey      string
+	backstory      string
+	chatSession    *genai.Chat
+	sessMutex      sync.Mutex
+	thinkingBudget int32
 }
 
 func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
@@ -32,9 +28,9 @@ func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
 
 }
 
-func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
-	sessMutex.Lock()
-	defer sessMutex.Unlock()
+func (gp *GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
+	gp.sessMutex.Lock()
+	defer gp.sessMutex.Unlock()
 	if gp.backstory == "" {
 		return nil, errors.New("backstory is empty")
 	}
@@ -43,13 +39,14 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageByte
 		return nil, errors.New("prompt is empty")
 	}
 
-	gemOnce.Do(func() {
+	// Initialize chat session if not already created
+	if gp.chatSession == nil {
 		s, err := gp.CreateChatSession(ctx)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
-		chatSession = s
-	})
+		gp.chatSession = s
+	}
 
 	parts := []genai.Part{
 		{Text: prompt},
@@ -59,7 +56,7 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageByte
 		parts = append(parts, *genai.NewPartFromBytes(imageByte, "image/jpeg"))
 	}
 
-	resp, err := chatSession.SendMessage(ctx, parts...)
+	resp, err := gp.chatSession.SendMessage(ctx, parts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +68,13 @@ func (gp GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageByte
 }
 
 func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
-	sessMutex.Lock()
-	defer sessMutex.Unlock()
+	gp.sessMutex.Lock()
+	defer gp.sessMutex.Unlock()
 	s, err := gp.CreateChatSession(ctx)
 	if err != nil {
 		return err
 	}
-	chatSession = s
+	gp.chatSession = s
 	return nil
 }
 
@@ -94,7 +91,7 @@ func (gp *GeminiPrompter) CreateChatSession(ctx context.Context) (*genai.Chat, e
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(gp.backstory, genai.RoleUser),
 		ThinkingConfig: &genai.ThinkingConfig{
-			ThinkingBudget: &thinkingBudget,
+			ThinkingBudget: &gp.thinkingBudget,
 		},
 		SafetySettings: []*genai.SafetySetting{{
 			Category:  genai.HarmCategoryHarassment,
