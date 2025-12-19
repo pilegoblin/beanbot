@@ -1,4 +1,4 @@
-package main
+package gemini
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"google.golang.org/genai"
 )
 
-type GeminiPrompter struct {
+type Prompter struct {
 	secretKey      string
 	backstory      string
 	chatSession    *genai.Chat
@@ -18,17 +18,16 @@ type GeminiPrompter struct {
 	thinkingBudget int32
 }
 
-func NewGeminiPrompter(backstory string) (*GeminiPrompter, error) {
+func NewPrompter(backstory string) (*Prompter, error) {
 	key, ok := os.LookupEnv("GOOGLE_API_KEY")
 	if !ok {
 		return nil, errors.New("token for Google API not found")
 	}
 
-	return &GeminiPrompter{secretKey: key, backstory: backstory}, nil
-
+	return &Prompter{secretKey: key, backstory: backstory}, nil
 }
 
-func (gp *GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
+func (gp *Prompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
 	gp.sessMutex.Lock()
 	defer gp.sessMutex.Unlock()
 	if gp.backstory == "" {
@@ -67,7 +66,7 @@ func (gp *GeminiPrompter) NewPrompt(ctx context.Context, prompt string, imageByt
 	return chunks, nil
 }
 
-func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
+func (gp *Prompter) ResetSession(ctx context.Context) error {
 	gp.sessMutex.Lock()
 	defer gp.sessMutex.Unlock()
 	s, err := gp.CreateChatSession(ctx)
@@ -78,7 +77,7 @@ func (gp *GeminiPrompter) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (gp *GeminiPrompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) {
+func (gp *Prompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) {
 
 	cc := &genai.ClientConfig{
 		APIKey: gp.secretKey,
@@ -119,3 +118,4 @@ func (gp *GeminiPrompter) CreateChatSession(ctx context.Context) (*genai.Chat, e
 
 	return chat, nil
 }
+

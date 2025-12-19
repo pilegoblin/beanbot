@@ -1,4 +1,4 @@
-module github.com/banana_slugg/beanbot
+module github.com/pilegoblin/beanbot
 
 go 1.25.0
 
