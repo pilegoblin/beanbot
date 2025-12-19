@@ -44,12 +44,16 @@ func NewBot(ctx context.Context) (*BeanBot, error) {
 }
 
 func (bb *BeanBot) Start() error {
-
 	err := bb.session.Open()
 	if err != nil {
 		return err
 	}
-	defer bb.session.Close()
+	defer func() {
+		err := bb.session.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 
 	wait := make(chan os.Signal, 1)
 	signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
@@ -64,7 +68,10 @@ func (bb *BeanBot) Start() error {
 // Sets the bot's status to 'Playing <status>'
 func (bb *BeanBot) SetStatus(status string) {
 	bb.session.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
-		s.UpdateGameStatus(0, status)
+		err := s.UpdateGameStatus(0, status)
+		if err != nil {
+			log.Println(err)
+		}
 	})
 }
 
@@ -87,7 +94,10 @@ func chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.Me
 			return
 		}
 		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
-			gemPrompter.ResetSession(ctx)
+			err := gemPrompter.ResetSession(ctx)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
 			return
@@ -139,6 +149,11 @@ func handleImage(ctx context.Context, s *discordgo.Session, m *discordgo.Message
 		if err != nil {
 			log.Println(err)
 			return
+		}
+
+		err = imageResp.Body.Close()
+		if err != nil {
+			log.Println(err)
 		}
 	}
 
