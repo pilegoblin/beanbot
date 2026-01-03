@@ -142,7 +142,7 @@ func (bb *BeanBot) handleImage(ctx context.Context, s *discordgo.Session, m *dis
 		}
 	}
 
-	resp, err := bb.prompter.NewPrompt(ctx, m.Content, imageBytes...)
+	resp, err := bb.prompter.NewPromptFromDiscordMessage(ctx, m, imageBytes...)
 	if err != nil {
 		log.Println(err)
 		return
@@ -164,7 +164,7 @@ func (bb *BeanBot) handleText(ctx context.Context, s *discordgo.Session, m *disc
 	defer c.Stop()
 
 	// generate the prompt
-	resp, err := bb.prompter.NewPrompt(ctx, m.Content)
+	resp, err := bb.prompter.NewPromptFromDiscordMessage(ctx, m)
 	if err != nil {
 		log.Println(err)
 		return
@@ -177,7 +177,8 @@ func (bb *BeanBot) handleText(ctx context.Context, s *discordgo.Session, m *disc
 	log.Println(err)
 
 	// as a final failsafe, send an "error message"
-	if sentMessage, err := s.ChannelMessageSend(m.ChannelID, "ERROR! ERROR!"); err != nil {
+	errorMessage := "HELP ME: " + err.Error()
+	if sentMessage, err := s.ChannelMessageSend(m.ChannelID, errorMessage); err != nil {
 		log.Println(err)
 	} else {
 		log.Println(sentMessage)

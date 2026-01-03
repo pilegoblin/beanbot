@@ -2,11 +2,13 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/bwmarrin/discordgo"
 	"google.golang.org/genai"
 )
 
@@ -27,16 +29,9 @@ func NewPrompter(backstory string) (*Prompter, error) {
 	return &Prompter{secretKey: key, backstory: backstory}, nil
 }
 
-func (gp *Prompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...[]byte) ([]string, error) {
+func (gp *Prompter) NewPromptFromDiscordMessage(ctx context.Context, m *discordgo.MessageCreate, imageBytes ...[]byte) ([]string, error) {
 	gp.sessMutex.Lock()
 	defer gp.sessMutex.Unlock()
-	if gp.backstory == "" {
-		return nil, errors.New("backstory is empty")
-	}
-
-	if prompt == "" {
-		return nil, errors.New("prompt is empty")
-	}
 
 	// Initialize chat session if not already created
 	if gp.chatSession == nil {
@@ -47,8 +42,14 @@ func (gp *Prompter) NewPrompt(ctx context.Context, prompt string, imageBytes ...
 		gp.chatSession = s
 	}
 
+	jsonBytes, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	jsonString := string(jsonBytes)
+
 	parts := []genai.Part{
-		{Text: prompt},
+		{Text: jsonString},
 	}
 
 	for _, imageByte := range imageBytes {
@@ -92,21 +93,22 @@ func (gp *Prompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) 
 		ThinkingConfig: &genai.ThinkingConfig{
 			ThinkingBudget: &gp.thinkingBudget,
 		},
-		SafetySettings: []*genai.SafetySetting{{
-			Category:  genai.HarmCategoryHarassment,
-			Threshold: genai.HarmBlockThresholdBlockNone,
-		},
+		SafetySettings: []*genai.SafetySetting{
+			{
+				Category:  genai.HarmCategoryHarassment,
+				Threshold: genai.HarmBlockThresholdOff,
+			},
 			{
 				Category:  genai.HarmCategoryHateSpeech,
-				Threshold: genai.HarmBlockThresholdBlockNone,
+				Threshold: genai.HarmBlockThresholdOff,
 			},
 			{
 				Category:  genai.HarmCategorySexuallyExplicit,
-				Threshold: genai.HarmBlockThresholdBlockNone,
+				Threshold: genai.HarmBlockThresholdOff,
 			},
 			{
 				Category:  genai.HarmCategoryDangerousContent,
-				Threshold: genai.HarmBlockThresholdBlockNone,
+				Threshold: genai.HarmBlockThresholdOff,
 			},
 		},
 	}
@@ -118,4 +120,3 @@ func (gp *Prompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) 
 
 	return chat, nil
 }
-
