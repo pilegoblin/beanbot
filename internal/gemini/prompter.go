@@ -12,6 +12,10 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	GeminiModel = "gemini-3-flash-preview"
+)
+
 type Prompter struct {
 	secretKey      string
 	backstory      string
@@ -113,7 +117,7 @@ func (gp *Prompter) CreateChatSession(ctx context.Context) (*genai.Chat, error) 
 		},
 	}
 
-	chat, err := client.Chats.Create(ctx, "gemini-2.5-flash", config, nil)
+	chat, err := client.Chats.Create(ctx, GeminiModel, config, nil)
 	if err != nil {
 		return nil, err
 	}
