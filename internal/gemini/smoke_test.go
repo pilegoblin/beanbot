@@ -95,3 +95,29 @@ func TestLiveImageModelDraws(t *testing.T) {
 	}
 	t.Logf("%s drew %d bytes of %s", ImageModel, len(img.Data), img.MIME)
 }
+
+func TestLiveSpeechModelSpeaks(t *testing.T) {
+	// A third model with a third response shape, and the one place the voice
+	// names are checked against reality: they are documentation-only strings,
+	// so a renamed or retired voice fails here and nowhere else.
+	p := liveOrSkip(t)
+
+	for _, voice := range Voices {
+		clip, err := p.GenerateSpeech(context.Background(),
+			"Beans are ready.", voice.Name, "cheerfully")
+		if err != nil {
+			t.Errorf("%s failed to speak as %s (%s): %v",
+				SpeechModel, voice.Name, voice.Characteristic, err)
+			continue
+		}
+		if len(clip.Data) <= wavHeaderBytes {
+			t.Errorf("%s returned a clip with no samples in it as %s", SpeechModel, voice.Name)
+			continue
+		}
+		if got := string(clip.Data[0:4]); got != "RIFF" {
+			t.Errorf("clip is not a WAV, starts with %q", got)
+		}
+		t.Logf("%s spoke %d bytes as %s (%s)",
+			SpeechModel, len(clip.Data), voice.Name, voice.Characteristic)
+	}
+}

@@ -24,6 +24,8 @@ func (rememberPerson) RequiredPermission() int64 { return 0 }
 // no API call and changes nothing in Discord.
 func (rememberPerson) Mutating() bool { return false }
 
+func (rememberPerson) Medium() Medium { return NoMedium }
+
 func (rememberPerson) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "remember_person",
@@ -126,6 +128,7 @@ type mergePeople struct{ memory *Memory }
 
 func (mergePeople) RequiredPermission() int64 { return 0 }
 func (mergePeople) Mutating() bool            { return false }
+func (mergePeople) Medium() Medium            { return NoMedium }
 
 func (mergePeople) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{

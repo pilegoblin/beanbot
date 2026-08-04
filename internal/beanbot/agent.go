@@ -52,7 +52,7 @@ func (a *agent) run(ctx context.Context, conv conversation, backlog string, imag
 	}
 
 	var files []*discordgo.File
-	mutated := false
+	remaining := &budget{spent: make(map[Medium]bool)}
 
 	// The opening Ask is the first round-trip, so the loop may spend only the
 	// remaining maxIterations-1.
@@ -60,7 +60,7 @@ func (a *agent) run(ctx context.Context, conv conversation, backlog string, imag
 		results := make([]gemini.FunctionResult, 0, len(resp.FunctionCalls))
 
 		for _, call := range resp.FunctionCalls {
-			result, produced, err := a.invoke(ctx, call, inv, &mutated)
+			result, produced, err := a.invoke(ctx, call, inv, remaining)
 			if err != nil {
 				log.Printf("capability %s: %v", call.Name, err)
 				results = append(results, gemini.FunctionResult{Name: call.Name, Err: err.Error()})
@@ -83,16 +83,53 @@ func (a *agent) run(ctx context.Context, conv conversation, backlog string, imag
 	return resp.Text, files, nil
 }
 
-// invoke resolves, gates and runs a single Capability. mutated is threaded
-// through so at most one guild-mutating Capability runs per Trigger.
-func (a *agent) invoke(ctx context.Context, call gemini.FunctionCall, inv Execution, mutated *bool) (string, []*discordgo.File, error) {
+// budget is what one Trigger is allowed to spend: one change to the Guild, and
+// one file of each Medium. The two are counted separately because they limit
+// different things — the first bounds what BeanBot does to the server, the
+// second bounds what it costs.
+type budget struct {
+	mutated bool
+	spent   map[Medium]bool
+}
+
+// check reports whether this Capability has already had its turn, saying why
+// in terms the model can relay to the channel. The Medium refusal tells the
+// model not to retry rather than to "ask again": it is being read inside a
+// turn that has round-trips left, and an invitation spends them all on calls
+// that will be refused identically.
+func (b *budget) check(c Capability) error {
+	if c.Mutating() && b.mutated {
+		return errors.New("only one change to the server is allowed per message — ask again for the next one")
+	}
+	if m := c.Medium(); m != NoMedium && b.spent[m] {
+		return fmt.Errorf("you have already made one %s and only one is allowed per message — "+
+			"do not call this again in this turn, just say what you were going to say", m)
+	}
+	return nil
+}
+
+// spend records a successful call. It runs only after the Capability returns,
+// so a refused or malformed attempt leaves room for a corrected retry in the
+// same turn.
+func (b *budget) spend(c Capability) {
+	if c.Mutating() {
+		b.mutated = true
+	}
+	if m := c.Medium(); m != NoMedium {
+		b.spent[m] = true
+	}
+}
+
+// invoke resolves, gates and runs a single Capability. The budget is threaded
+// through so that one Trigger cannot spend without limit.
+func (a *agent) invoke(ctx context.Context, call gemini.FunctionCall, inv Execution, remaining *budget) (string, []*discordgo.File, error) {
 	capability, ok := a.capabilities[call.Name]
 	if !ok {
 		return "", nil, fmt.Errorf("there is no capability called %q", call.Name)
 	}
 
-	if capability.Mutating() && *mutated {
-		return "", nil, errors.New("only one change to the server is allowed per message — ask again for the next one")
+	if err := remaining.check(capability); err != nil {
+		return "", nil, err
 	}
 
 	if err := checkGate(capability, inv); err != nil {
@@ -105,10 +142,6 @@ func (a *agent) invoke(ctx context.Context, call gemini.FunctionCall, inv Execut
 		return "", nil, err
 	}
 
-	// The budget is spent only once the guild has actually changed. A refused
-	// or malformed attempt must leave room for a corrected retry in this turn.
-	if capability.Mutating() {
-		*mutated = true
-	}
+	remaining.spend(capability)
 	return result.Summary, result.Files, nil
 }

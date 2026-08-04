@@ -49,8 +49,26 @@ type Result struct {
 	Files   []*discordgo.File
 }
 
+// Medium is the kind of file a Capability produces, and the key its budget is
+// counted against. At most one Capability of each Medium runs per Trigger,
+// which is what bounds spending at the generation models: they are the only
+// Capabilities that cost real money per call, and a Memory is member-writable,
+// so "always draw six pictures" is otherwise a durable instruction anyone can
+// plant. The zero value is the ordinary case — most Capabilities make nothing.
+//
+// It is deliberately independent of Mutating: a picture costs money and
+// changes nothing in the Guild, an event is the reverse, and "draw the poster
+// and make the event" must spend one of each rather than compete.
+type Medium string
+
+const (
+	NoMedium    Medium = ""
+	MediumImage Medium = "image"
+	MediumClip  Medium = "clip"
+)
+
 // Capability is something BeanBot can do beyond talking. Each one declares its
-// own schema, its own Gate, and whether it changes the guild.
+// own schema, its own Gate, whether it changes the guild, and what it costs.
 type Capability interface {
 	// Declaration is the tool schema shown to the model.
 	Declaration() *genai.FunctionDeclaration
@@ -62,6 +80,8 @@ type Capability interface {
 	// Capability runs per turn. Writing to Memory is a mutation that deliberately
 	// does not count: it costs no API call and changes nothing in the Guild.
 	Mutating() bool
+	// Medium is the kind of file this produces, or NoMedium if it produces none.
+	Medium() Medium
 	Execute(ctx context.Context, inv Execution) (Result, error)
 }
 

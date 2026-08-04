@@ -55,6 +55,7 @@ func NewBot(ctx context.Context, prompter *gemini.Prompter, config Config) (*Bea
 		createEvent{},
 		generateImage{drawer: prompter},
 		editImage{drawer: prompter},
+		generateSpeech{maker: prompter},
 	}
 	// Without somewhere to write, the note-taking Capabilities are not declared
 	// at all — better than offering the model tools that always fail.

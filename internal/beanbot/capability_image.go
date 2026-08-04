@@ -16,12 +16,16 @@ type imageDrawer interface {
 }
 
 // generateImage draws a new picture with Nano Banana. Not guild-mutating: it
-// posts a file but changes nothing about the server.
+// posts a file but changes nothing about the server. It is the most expensive
+// thing BeanBot does per call, and it is ungated, so the image Medium is what
+// stops one Trigger — or a planted Memory — from drawing all afternoon.
 type generateImage struct{ drawer imageDrawer }
 
 func (generateImage) RequiredPermission() int64 { return 0 }
 
 func (generateImage) Mutating() bool { return false }
+
+func (generateImage) Medium() Medium { return MediumImage }
 
 func (generateImage) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
@@ -54,6 +58,10 @@ type editImage struct{ drawer imageDrawer }
 func (editImage) RequiredPermission() int64 { return 0 }
 
 func (editImage) Mutating() bool { return false }
+
+// The same Medium as drawing, because it is the same call to the same model at
+// the same price. Redrawing repeatedly is the cheapest way to spend a lot.
+func (editImage) Medium() Medium { return MediumImage }
 
 func (editImage) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{

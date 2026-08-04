@@ -22,6 +22,8 @@ func (createEvent) RequiredPermission() int64 { return discordgo.PermissionManag
 
 func (createEvent) Mutating() bool { return true }
 
+func (createEvent) Medium() Medium { return NoMedium }
+
 func (createEvent) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "create_event",
