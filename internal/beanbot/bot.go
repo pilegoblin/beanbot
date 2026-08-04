@@ -3,6 +3,7 @@ package beanbot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -16,12 +17,27 @@ import (
 	"github.com/pilegoblin/beanbot/internal/gemini"
 )
 
+// maxAttachmentBytes caps how much of an attachment BeanBot will download.
+// Discord allows large uploads and the bytes go straight into a model request.
+const maxAttachmentBytes = 8 << 20 // 8 MiB
+
+// Config is everything BeanBot needs that isn't a secret.
+type Config struct {
+	// BacklogSize is how many recent channel messages are read as context.
+	BacklogSize int
+	// Location is the Server Timezone that relative times resolve against.
+	Location *time.Location
+}
+
 type BeanBot struct {
 	session  *discordgo.Session
 	prompter *gemini.Prompter
+	agent    *agent
+	guild    Guild
+	config   Config
 }
 
-func NewBot(ctx context.Context, prompter *gemini.Prompter) (*BeanBot, error) {
+func NewBot(ctx context.Context, prompter *gemini.Prompter, config Config) (*BeanBot, error) {
 	key, ok := os.LookupEnv("DISCORD_API_KEY")
 	if !ok {
 		return nil, errors.New("token for Discord API not found")
@@ -32,25 +48,34 @@ func NewBot(ctx context.Context, prompter *gemini.Prompter) (*BeanBot, error) {
 		return nil, err
 	}
 
+	guild := &discordGuild{session: dg}
 	bb := &BeanBot{
 		session:  dg,
 		prompter: prompter,
+		guild:    guild,
+		config:   config,
+		agent: newAgent([]Capability{
+			createEvent{},
+			generateImage{drawer: prompter},
+			editImage{drawer: prompter},
+		}),
 	}
 
-	dg.Identify.Intents = discordgo.IntentsGuildMessages
-	dg.AddHandler(bb.chatWithBot(ctx))
+	// MessageContent is privileged and must also be enabled in the Discord
+	// developer portal. Without it every message arrives with empty content
+	// and the Backlog is worthless.
+	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
+	dg.AddHandler(bb.onMessage(ctx))
 
 	return bb, nil
 }
 
 func (bb *BeanBot) Start() error {
-	err := bb.session.Open()
-	if err != nil {
+	if err := bb.session.Open(); err != nil {
 		return err
 	}
 	defer func() {
-		err := bb.session.Close()
-		if err != nil {
+		if err := bb.session.Close(); err != nil {
 			log.Println(err)
 		}
 	}()
@@ -65,155 +90,199 @@ func (bb *BeanBot) Start() error {
 	return nil
 }
 
-// Sets the bot's status to 'Playing <status>'
+// SetStatus sets the bot's status to 'Playing <status>'
 func (bb *BeanBot) SetStatus(status string) {
 	bb.session.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
-		err := s.UpdateGameStatus(0, status)
-		if err != nil {
+		if err := s.UpdateGameStatus(0, status); err != nil {
 			log.Println(err)
 		}
 	})
 }
 
-func (bb *BeanBot) chatWithBot(ctx context.Context) func(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (bb *BeanBot) onMessage(ctx context.Context) func(*discordgo.Session, *discordgo.MessageCreate) {
 	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		if m.Author.ID == s.State.User.ID {
+		// State.User is unset until READY; a nil deref here would take down
+		// the whole bot rather than one message.
+		if s.State == nil || s.State.User == nil {
 			return
 		}
-		if strings.Contains(strings.ToLower(m.Content), "!bbreset") {
-			err := bb.prompter.ResetSession(ctx)
-			if err != nil {
-				log.Println(err)
-			}
-		}
-		if !strings.Contains(strings.ToLower(m.Content), "beanbot") {
+		if !isTrigger(m.Message, s.State.User.ID) {
 			return
 		}
-
-		if hasAllImageAttachments(m.Attachments) {
-			bb.handleImage(ctx, s, m)
-		} else {
-			bb.handleText(ctx, s, m)
-		}
+		// Each Trigger is independent — there is no shared session to
+		// serialise on, so they may run concurrently.
+		go bb.respond(ctx, m)
 	}
 }
 
-func hasAllImageAttachments(attachments []*discordgo.MessageAttachment) bool {
-	if len(attachments) == 0 {
-		return false
-	}
-	for _, attachment := range attachments {
-		if !strings.Contains(strings.ToLower(attachment.ContentType), "image") {
-			return false
-		}
-	}
-	return true
-}
+func (bb *BeanBot) respond(ctx context.Context, m *discordgo.MessageCreate) {
+	stopTyping := showTyping(bb.session, m.ChannelID)
+	defer stopTyping()
 
-func (bb *BeanBot) handleImage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
-	c, err := AsyncType(s, m.ChannelID)
+	reply, files, err := bb.think(ctx, m)
 	if err != nil {
-		log.Println(err)
+		log.Printf("responding in %s: %v", m.ChannelID, err)
+		bb.say(m.ChannelID, m.ID, "something went wrong in my head: "+err.Error(), nil)
 		return
 	}
-	defer c.Stop()
 
-	urls := make([]string, len(m.Attachments))
-	for i, attachment := range m.Attachments {
-		urls[i] = attachment.URL
+	bb.say(m.ChannelID, m.ID, reply, files)
+}
+
+func (bb *BeanBot) think(ctx context.Context, m *discordgo.MessageCreate) (string, []*discordgo.File, error) {
+	recent, err := bb.session.ChannelMessages(m.ChannelID, bb.config.BacklogSize, m.ID, "", "")
+	if err != nil {
+		// A missing Backlog is a degraded conversation, not a dead one.
+		log.Printf("fetching backlog for %s: %v", m.ChannelID, err)
 	}
 
-	imageBytes := make([][]byte, len(urls))
-	for i, url := range urls {
-		imageResp, err := http.Get(url)
+	// The Trigger itself is not in the Backlog, since we asked for messages
+	// before it.
+	backlog := renderBacklog(append([]*discordgo.Message{m.Message}, recent...),
+		bb.session.State.User.ID, bb.config.Location)
+
+	// Editing works on whatever pictures are in view: the ones attached to the
+	// Trigger, or the ones on the message it replies to.
+	images := bb.downloadImages(m.Attachments)
+	if m.ReferencedMessage != nil {
+		images = append(images, bb.downloadImages(m.ReferencedMessage.Attachments)...)
+	}
+
+	now := time.Now().In(bb.config.Location)
+	exec := Execution{
+		GuildID:   m.GuildID,
+		ChannelID: m.ChannelID,
+		UserID:    m.Author.ID,
+		Images:    images,
+		Now:       now,
+		Location:  bb.config.Location,
+		Guild:     bb.guild,
+	}
+
+	turn := bb.prompter.NewTurn(bb.agent.declarations)
+	return bb.agent.run(ctx, turn, situate(backlog, now), images, exec)
+}
+
+// situate tells the model where and when it is. It has no clock, so anything
+// relative — "friday", "tomorrow" — is a guess without this.
+func situate(backlog string, now time.Time) string {
+	return fmt.Sprintf(
+		"Current time: %s\nServer timezone: %s\n\n"+
+			"Recent conversation in this channel, oldest first. The last line is the "+
+			"message you are replying to.\n\n%s",
+		now.Format(time.RFC3339), now.Location(), backlog)
+}
+
+func (bb *BeanBot) say(channelID, replyTo, text string, files []*discordgo.File) {
+	chunks := splitMessage(text, discordMessageLimit)
+	if len(chunks) == 0 && len(files) == 0 {
+		return
+	}
+
+	for i, chunk := range chunks {
+		send := &discordgo.MessageSend{Content: chunk}
+		// Attach files to the last message so they land beside the sign-off.
+		if i == len(chunks)-1 {
+			send.Files = files
+			files = nil
+		}
+		if err := bb.guild.SendMessage(channelID, send); err != nil {
+			log.Printf("sending to %s: %v", channelID, err)
+			return
+		}
+	}
+
+	if len(files) > 0 {
+		if err := bb.guild.SendMessage(channelID, &discordgo.MessageSend{Files: files}); err != nil {
+			log.Printf("sending files to %s: %v", channelID, err)
+		}
+	}
+}
+
+func (bb *BeanBot) downloadImages(attachments []*discordgo.MessageAttachment) []gemini.Image {
+	var images []gemini.Image
+	for _, a := range attachments {
+		if !strings.HasPrefix(strings.ToLower(a.ContentType), "image") {
+			continue
+		}
+
+		data, err := download(a.URL)
 		if err != nil {
-			log.Println(err)
-			return
+			log.Printf("downloading %s: %v", a.Filename, err)
+			continue
 		}
-		imageBytes[i], err = io.ReadAll(imageResp.Body)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		err = imageResp.Body.Close()
-		if err != nil {
-			log.Println(err)
-		}
+		images = append(images, gemini.Image{Data: data, MIME: a.ContentType})
 	}
-
-	resp, err := bb.prompter.NewPromptFromDiscordMessage(ctx, m, imageBytes...)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	err = SendChunks(s, m.ChannelID, resp)
-	if err == nil {
-		return
-	}
-	log.Println(err)
+	return images
 }
 
-func (bb *BeanBot) handleText(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
-	c, err := AsyncType(s, m.ChannelID)
+// attachmentClient bounds how long a Trigger can be held open by a slow host.
+// Every Trigger runs in its own goroutine, so an untimed fetch parks one
+// indefinitely.
+var attachmentClient = &http.Client{Timeout: 30 * time.Second}
+
+func download(url string) ([]byte, error) {
+	resp, err := attachmentClient.Get(url)
 	if err != nil {
-		log.Println(err)
-		return
+		return nil, err
 	}
-	defer c.Stop()
+	defer resp.Body.Close()
 
-	// generate the prompt
-	resp, err := bb.prompter.NewPromptFromDiscordMessage(ctx, m)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
+	}
+
+	// Read one byte past the cap so an oversized attachment is an error rather
+	// than a silently truncated, corrupt image.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAttachmentBytes+1))
 	if err != nil {
-		log.Println(err)
-		return
+		return nil, err
 	}
-
-	err = SendChunks(s, m.ChannelID, resp)
-	if err == nil {
-		return
+	if len(data) > maxAttachmentBytes {
+		return nil, fmt.Errorf("attachment is larger than %d bytes", maxAttachmentBytes)
 	}
-	log.Println(err)
-
-	// as a final failsafe, send an "error message"
-	errorMessage := "HELP ME: " + err.Error()
-	if sentMessage, err := s.ChannelMessageSend(m.ChannelID, errorMessage); err != nil {
-		log.Println(err)
-	} else {
-		log.Println(sentMessage)
-		return
-	}
+	return data, nil
 }
 
-func AsyncType(s *discordgo.Session, channelID string) (*time.Ticker, error) {
-	// send a typing status once at the start
-	err := s.ChannelTyping(channelID)
-	if err != nil {
-		log.Println(err)
+// showTyping keeps the typing indicator alive until the returned function is
+// called. Discord expires it after about ten seconds.
+func showTyping(s *discordgo.Session, channelID string) func() {
+	send := func() {
+		if err := s.ChannelTyping(channelID); err != nil {
+			log.Println(err)
+		}
 	}
-	// then send a typing status every 5 seconds if the channel is still active
-	ticker := time.NewTicker(5 * time.Second)
+	send()
+
+	done := make(chan struct{})
 	go func() {
-		for range ticker.C {
-			err := s.ChannelTyping(channelID)
-			if err != nil {
-				log.Println(err)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				send()
+			case <-done:
+				return
 			}
 		}
 	}()
 
-	return ticker, nil
+	return func() { close(done) }
 }
 
-func SendChunks(s *discordgo.Session, channelID string, chunks []string) error {
-	for _, chunk := range chunks {
-		if chunk == "" {
-			continue
-		}
-		if _, err := s.ChannelMessageSend(channelID, chunk); err != nil {
-			return err
-		}
-	}
-	return nil
+// discordGuild is the live implementation of Guild, backed by a real session.
+type discordGuild struct{ session *discordgo.Session }
+
+func (d *discordGuild) MemberPermissions(userID, channelID string) (int64, error) {
+	return d.session.UserChannelPermissions(userID, channelID)
+}
+
+func (d *discordGuild) CreateEvent(guildID string, params *discordgo.GuildScheduledEventParams) (*discordgo.GuildScheduledEvent, error) {
+	return d.session.GuildScheduledEventCreate(guildID, params)
+}
+
+func (d *discordGuild) SendMessage(channelID string, send *discordgo.MessageSend) error {
+	_, err := d.session.ChannelMessageSendComplex(channelID, send)
+	return err
 }
