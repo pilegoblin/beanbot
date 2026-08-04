@@ -30,7 +30,11 @@ type Execution struct {
 	UserID    string
 	// Author is what the channel calls the member who sent the Trigger, the
 	// same name the Backlog shows. UserID identifies them; this attributes them.
-	Author   string
+	Author string
+	// Mentions are the users @-mentioned in the Trigger, already resolved by
+	// Discord. They are the only names besides the Author's that a snowflake may
+	// be attached to, because they are the only ones Discord stated outright.
+	Mentions []namedUser
 	Images   []gemini.Image
 	Now      time.Time
 	Location *time.Location
@@ -116,4 +120,22 @@ func argString(args map[string]any, key string) (string, error) {
 func optionalString(args map[string]any, key string) string {
 	v, _ := args[key].(string)
 	return v
+}
+
+// optionalStrings reads a list argument that may legitimately be absent. The
+// model's arguments arrive as decoded JSON, so a list of strings is a []any of
+// strings; anything else in it is skipped rather than failing the whole call.
+func optionalStrings(args map[string]any, key string) []string {
+	items, ok := args[key].([]any)
+	if !ok {
+		return nil
+	}
+
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }

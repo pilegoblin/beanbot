@@ -164,6 +164,7 @@ Rules:
 - Drop entries that record passing chatter rather than something lasting about the server or its members.
 - Keep the trailing _(date, @author)_ attribution on every entry. When merging, keep the most recent date.
 - Keep the existing structure: "## Section" headings with "- entry" bullets beneath them.
+- Never add a "## People" heading. Notes about individual people are kept separately, are not part of what you are being given, and must not be invented here.
 - Output the markdown document and nothing else — no preamble, no commentary, no code fences.`
 
 // Compact rewrites an oversized Memory smaller. It bypasses Turn: there is no

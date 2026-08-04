@@ -29,15 +29,15 @@ func TestARememberedThingIsWrittenDownWithWhoAndWhen(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
 	if _, err := (remember{memory: m}).Execute(context.Background(),
-		memoryExecution(rememberArgs("People", "Steve likes boats."))); err != nil {
+		memoryExecution(rememberArgs("Traditions", "Thursday is game night."))); err != nil {
 		t.Fatal(err)
 	}
 
 	got := m.Load("424242")
-	if !strings.Contains(got, "## People") {
+	if !strings.Contains(got, "## Traditions") {
 		t.Errorf("no section heading: %q", got)
 	}
-	if !strings.Contains(got, "Steve likes boats.") {
+	if !strings.Contains(got, "Thursday is game night.") {
 		t.Errorf("the fact was not recorded: %q", got)
 	}
 	if !strings.Contains(got, "_(2026-08-04, @drew)_") {
@@ -52,11 +52,11 @@ func TestRememberingCorrectsInsteadOfContradicting(t *testing.T) {
 	r := remember{memory: m}
 
 	if _, err := r.Execute(context.Background(),
-		memoryExecution(rememberArgs("People", "Steve is allergic to peanuts."))); err != nil {
+		memoryExecution(rememberArgs("Traditions", "Steve is allergic to peanuts."))); err != nil {
 		t.Fatal(err)
 	}
 
-	args := rememberArgs("People", "Steve is not allergic to anything.")
+	args := rememberArgs("Traditions", "Steve is not allergic to anything.")
 	args["replaces"] = "Steve is allergic to peanuts"
 	if _, err := r.Execute(context.Background(), memoryExecution(args)); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestRememberingCorrectsInsteadOfContradicting(t *testing.T) {
 func TestRememberingOutsideAServerIsRefused(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
-	inv := memoryExecution(rememberArgs("People", "Steve likes boats."))
+	inv := memoryExecution(rememberArgs("Traditions", "Thursday is game night."))
 	inv.GuildID = ""
 
 	if _, err := (remember{memory: m}).Execute(context.Background(), inv); err == nil {
@@ -87,9 +87,9 @@ func TestRememberingNothingIsRefused(t *testing.T) {
 	r := remember{memory: m}
 
 	for _, args := range []map[string]any{
-		{"entry": "Steve likes boats."},
-		{"section": "People"},
-		{"section": "People", "entry": ""},
+		{"entry": "Thursday is game night."},
+		{"section": "Traditions"},
+		{"section": "Traditions", "entry": ""},
 	} {
 		if _, err := r.Execute(context.Background(), memoryExecution(args)); err == nil {
 			t.Errorf("args %v should have been refused", args)

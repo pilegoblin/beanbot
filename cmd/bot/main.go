@@ -17,10 +17,17 @@ import (
 // defaultBacklogSize is how many recent messages BeanBot reads as context.
 const defaultBacklogSize = 50
 
-// defaultMemoryLimit is how large a Guild's Memory may grow before Compaction
-// rewrites it smaller. Every Trigger in that Guild carries the whole document,
-// so this is a per-message cost as much as a disk one.
+// defaultMemoryLimit is how large a Guild's topical notes may grow before
+// Compaction rewrites them smaller. Every Trigger in that Guild carries them
+// whole, so this is a per-message cost as much as a disk one. The Roster is not
+// counted here: it is never compacted and never read back whole.
 const defaultMemoryLimit = 8 << 10
+
+// defaultRecallBudget is how many bytes of Roster one Trigger may carry. The
+// Roster itself has no ceiling, so this is the only thing standing between a
+// server that has discussed four hundred people and a four-hundred-person
+// prompt.
+const defaultRecallBudget = 4 << 10
 
 // envFile holds configuration during local development. In production the
 // process is configured with real environment variables instead.
@@ -52,7 +59,7 @@ func main() {
 	// switched off, but a configured directory that is not there means the
 	// volume did not mount, and carrying on would write Memory to a filesystem
 	// the next deploy discards.
-	memory, err := beanbot.OpenMemory(os.Getenv("BEANBOT_MEMORY_DIR"), memoryLimit(), prompter)
+	memory, err := beanbot.OpenMemory(os.Getenv("BEANBOT_MEMORY_DIR"), memoryLimit(), recallBudget(), prompter)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,6 +122,14 @@ func memoryLimit() int {
 	n, err := strconv.Atoi(os.Getenv("BEANBOT_MEMORY_LIMIT"))
 	if err != nil || n <= 0 {
 		return defaultMemoryLimit
+	}
+	return n
+}
+
+func recallBudget() int {
+	n, err := strconv.Atoi(os.Getenv("BEANBOT_RECALL_BUDGET"))
+	if err != nil || n <= 0 {
+		return defaultRecallBudget
 	}
 	return n
 }

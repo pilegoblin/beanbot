@@ -95,3 +95,38 @@ func TestBacklogSkipsEmptyMessages(t *testing.T) {
 		t.Errorf("expected empty message dropped, got:\n%s", got)
 	}
 }
+
+func TestEverySpeakerIsListedOnceWithTheNameTheChannelUses(t *testing.T) {
+	// The pairing is what finds a Person whose notes are headed with the name
+	// they used to go by, so it has to be the name the Backlog actually printed.
+	backlog := []*discordgo.Message{
+		msg("Drew", "1", "anyone up for smash tonight", "14:03"),
+		msg("Sam", "2", "i'm down after 8", "14:04"),
+		msg("Drew", "1", "cool", "14:05"),
+	}
+
+	got := speakersIn(backlog)
+
+	want := []namedUser{{ID: "1", Name: "Drew"}, {ID: "2", Name: "Sam"}}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestAMentionCarriesTheIdentityDiscordResolved(t *testing.T) {
+	// The only names besides the author's that a snowflake may be attached to,
+	// because they are the only ones Discord stated rather than the model guessed.
+	m := msg("Drew", "1", "what do you know about <@2>", "14:03")
+	m.Mentions = []*discordgo.User{{ID: "2", Username: "sam", GlobalName: "Sam"}}
+
+	got := mentionsIn(m)
+
+	if len(got) != 1 || got[0] != (namedUser{ID: "2", Name: "Sam"}) {
+		t.Errorf("got %v, want one resolved mention for Sam", got)
+	}
+}

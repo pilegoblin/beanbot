@@ -16,15 +16,23 @@ import (
 type stubCompactor struct {
 	mu    sync.Mutex
 	calls int
+	given string
 	out   string
 	err   error
 }
 
-func (s *stubCompactor) Compact(context.Context, string) (string, error) {
+func (s *stubCompactor) Compact(_ context.Context, document string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
+	s.given = document
 	return s.out, s.err
+}
+
+func (s *stubCompactor) sawDocument() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.given
 }
 
 func (s *stubCompactor) called() int {
@@ -36,7 +44,7 @@ func (s *stubCompactor) called() int {
 func openTestMemory(t *testing.T, limit int, c Compactor) *Memory {
 	t.Helper()
 
-	m, err := OpenMemory(t.TempDir(), limit, c)
+	m, err := OpenMemory(t.TempDir(), limit, 4<<10, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +52,7 @@ func openTestMemory(t *testing.T, limit int, c Compactor) *Memory {
 }
 
 func TestMemoryIsDisabledWhenNoDirectoryIsConfigured(t *testing.T) {
-	m, err := OpenMemory("", 8<<10, nil)
+	m, err := OpenMemory("", 8<<10, 4<<10, nil)
 	if err != nil {
 		t.Fatalf("an unset directory means the feature is off, not broken: %v", err)
 	}
@@ -59,7 +67,7 @@ func TestAMissingDirectoryIsRefusedRatherThanCreated(t *testing.T) {
 	// ephemeral layer — memory that works perfectly until the next deploy.
 	dir := filepath.Join(t.TempDir(), "not-mounted")
 
-	if _, err := OpenMemory(dir, 8<<10, nil); err == nil {
+	if _, err := OpenMemory(dir, 8<<10, 4<<10, nil); err == nil {
 		t.Fatal("a missing memory directory should be an error")
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
@@ -73,7 +81,7 @@ func TestAFileWhereTheDirectoryShouldBeIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := OpenMemory(path, 8<<10, nil); err == nil {
+	if _, err := OpenMemory(path, 8<<10, 4<<10, nil); err == nil {
 		t.Error("a regular file is not a usable memory directory")
 	}
 }
@@ -89,7 +97,7 @@ func TestAnUnwritableDirectoryIsRefusedAtStartup(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	if _, err := OpenMemory(dir, 8<<10, nil); err == nil {
+	if _, err := OpenMemory(dir, 8<<10, 4<<10, nil); err == nil {
 		t.Error("a read-only memory directory should be an error")
 	}
 }
@@ -97,11 +105,11 @@ func TestAnUnwritableDirectoryIsRefusedAtStartup(t *testing.T) {
 func TestWhatIsRecordedIsWhatIsLoaded(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
-	if err := m.Record("123", change{Section: "People", Entry: "Steve likes boats."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := m.Load("123"); !strings.Contains(got, "Steve likes boats.") {
+	if got := m.Load("123"); !strings.Contains(got, "Thursday is game night.") {
 		t.Errorf("got %q", got)
 	}
 }
@@ -117,7 +125,7 @@ func TestAGuildWithNoMemoryYetReadsAsEmpty(t *testing.T) {
 func TestOneGuildCannotReadAnothersMemory(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
-	if err := m.Record("111", change{Section: "People", Entry: "Steve likes boats."}); err != nil {
+	if err := m.Record("111", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +140,7 @@ func TestAGuildIDThatIsNotASnowflakeIsRefused(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
 	for _, id := range []string{"", "../etc/passwd", "12/34", "abc"} {
-		if err := m.Record(id, change{Section: "People", Entry: "x"}); err == nil {
+		if err := m.Record(id, change{Section: "Traditions", Entry: "x"}); err == nil {
 			t.Errorf("guild ID %q should have been refused", id)
 		}
 		if got := m.Load(id); got != "" {
@@ -147,7 +155,7 @@ func TestADisabledMemoryReadsEmptyAndRefusesWrites(t *testing.T) {
 	if got := m.Load("123"); got != "" {
 		t.Errorf("got %q, want empty", got)
 	}
-	if err := m.Record("123", change{Section: "People", Entry: "x"}); err == nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "x"}); err == nil {
 		t.Error("a disabled Memory should refuse to record")
 	}
 	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
@@ -166,7 +174,7 @@ func TestConcurrentRecordsAllSurvive(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			if err := m.Record("123", change{
-				Section: "People",
+				Section: "Traditions",
 				Entry:   fmt.Sprintf("fact number %d", i),
 			}); err != nil {
 				t.Error(err)
@@ -184,10 +192,10 @@ func TestConcurrentRecordsAllSurvive(t *testing.T) {
 }
 
 func TestASmallMemoryIsLeftAlone(t *testing.T) {
-	compactor := &stubCompactor{out: "## People\n- squashed\n"}
+	compactor := &stubCompactor{out: "## Traditions\n- squashed\n"}
 	m := openTestMemory(t, 8<<10, compactor)
 
-	if err := m.Record("123", change{Section: "People", Entry: "Steve likes boats."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
@@ -200,12 +208,12 @@ func TestASmallMemoryIsLeftAlone(t *testing.T) {
 }
 
 func TestAnOversizedMemoryIsReplacedByItsCompaction(t *testing.T) {
-	compactor := &stubCompactor{out: "## People\n- Everyone has opinions about boats.\n"}
+	compactor := &stubCompactor{out: "## Traditions\n- Everyone turns up eventually.\n"}
 	m := openTestMemory(t, 200, compactor)
 
 	for i := range 20 {
 		if err := m.Record("123", change{
-			Section: "People",
+			Section: "Traditions",
 			Entry:   fmt.Sprintf("a reasonably wordy fact number %d about somebody", i),
 		}); err != nil {
 			t.Fatal(err)
@@ -228,7 +236,7 @@ func TestAFailedCompactionLeavesTheMemoryIntact(t *testing.T) {
 	compactor := &stubCompactor{err: errors.New("the model is having a day")}
 	m := openTestMemory(t, 50, compactor)
 
-	if err := m.Record("123", change{Section: "People", Entry: "Steve likes boats, a great deal, always."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night, always has been."}); err != nil {
 		t.Fatal(err)
 	}
 	before := m.Load("123")
@@ -248,7 +256,7 @@ func compactionReturning(t *testing.T, out string) error {
 	t.Helper()
 
 	m := openTestMemory(t, 50, &stubCompactor{out: out})
-	if err := m.Record("123", change{Section: "People", Entry: "Steve likes boats, a great deal, always."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night, always has been."}); err != nil {
 		t.Fatal(err)
 	}
 	before := m.Load("123")
@@ -267,6 +275,16 @@ func TestACompactionThatReturnsNothingIsRejected(t *testing.T) {
 		if err := compactionReturning(t, out); err == nil {
 			t.Errorf("compaction returning %q should be rejected", out)
 		}
+	}
+}
+
+func TestACompactionThatWritesUnderPeopleIsRejected(t *testing.T) {
+	// The compactor is never shown the Roster, so anything it files there is
+	// invented or a topical note it re-filed — and only its topical answer is
+	// kept, so either way that text would vanish. Refusing leaves the notes
+	// oversized, which the next Trigger retries.
+	if err := compactionReturning(t, "## T\n- a\n\n## People\n- x\n"); err == nil {
+		t.Error("a compaction that wrote under People should be rejected")
 	}
 }
 
@@ -297,11 +315,11 @@ func TestCompactionDoesNotBlockSomeoneRecordingSomething(t *testing.T) {
 	compactor := &gatedCompactor{
 		entered: make(chan struct{}),
 		release: make(chan struct{}),
-		out:     "## People\n- Everyone has opinions about boats.\n",
+		out:     "## Traditions\n- Everyone turns up eventually.\n",
 	}
 	m := openTestMemory(t, 20, compactor)
 
-	if err := m.Record("123", change{Section: "People", Entry: "a reasonably wordy fact about somebody or other"}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "a reasonably wordy fact about somebody or other"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -310,7 +328,7 @@ func TestCompactionDoesNotBlockSomeoneRecordingSomething(t *testing.T) {
 	<-compactor.entered
 
 	recorded := make(chan error, 1)
-	go func() { recorded <- m.Record("123", change{Section: "People", Entry: "Kate hates boats."}) }()
+	go func() { recorded <- m.Record("123", change{Section: "Traditions", Entry: "Sunday is a roast."}) }()
 
 	select {
 	case err := <-recorded:
@@ -328,19 +346,122 @@ func TestCompactionDoesNotBlockSomeoneRecordingSomething(t *testing.T) {
 
 	// The compaction was computed from a document that no longer exists, so
 	// writing it would drop what was recorded meanwhile.
-	if got := m.Load("123"); !strings.Contains(got, "Kate hates boats.") {
+	if got := m.Load("123"); !strings.Contains(got, "Sunday is a roast.") {
 		t.Errorf("a stale compaction overwrote a concurrent write: %q", got)
+	}
+}
+
+// crowdedRoster fills a Guild's Roster with people, which Compaction must never
+// be allowed near.
+func crowdedRoster(t *testing.T, m *Memory) {
+	t.Helper()
+
+	for i := range 20 {
+		if err := m.RecordPerson("123", personChange{
+			Name: fmt.Sprintf("Person Number %d", i),
+			Fact: fmt.Sprintf("a reasonably wordy note about person number %d", i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTheRosterIsNeverHandedToCompaction(t *testing.T) {
+	// Compaction is a model rewrite of the only copy, and "make this smaller"
+	// applied to a roster means merging two thin people or dropping whoever has
+	// not come up lately. Nothing in the Roster is ever forgotten.
+	compactor := &stubCompactor{out: "## Traditions\n- Everyone turns up eventually.\n"}
+	m := openTestMemory(t, 200, compactor)
+
+	crowdedRoster(t, m)
+	for i := range 10 {
+		if err := m.Record("123", change{
+			Section: "Traditions",
+			Entry:   fmt.Sprintf("a reasonably wordy tradition number %d", i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(compactor.sawDocument(), "Person Number") {
+		t.Errorf("the roster was handed to the model: %q", compactor.sawDocument())
+	}
+	got := m.Load("123")
+	for i := range 20 {
+		if !strings.Contains(got, fmt.Sprintf("person number %d", i)) {
+			t.Fatalf("compaction lost person %d:\n%s", i, got)
+		}
+	}
+	if !strings.Contains(got, "Everyone turns up eventually.") {
+		t.Errorf("the compacted topical notes were not written back: %q", got)
+	}
+}
+
+func TestABigRosterDoesNotProvokeCompaction(t *testing.T) {
+	// The limit caps the topical notes, which ride on every message whole. The
+	// Roster does not ride on every message, so it does not count against them.
+	compactor := &stubCompactor{out: "## Traditions\n- squashed\n"}
+	m := openTestMemory(t, 400, compactor)
+
+	crowdedRoster(t, m)
+
+	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
+		t.Fatal(err)
+	}
+	if compactor.called() != 0 {
+		t.Error("a roster over the limit should not provoke a compaction")
+	}
+}
+
+func TestANoteAboutSomebodyDoesNotAbandonACompaction(t *testing.T) {
+	// The staleness check exists to protect a concurrent write. A Roster write
+	// touches nothing Compaction is rewriting, so abandoning for one would mean
+	// an oversized Memory in any server busy enough to need compacting.
+	compactor := &gatedCompactor{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		out:     "## Traditions\n- Everyone turns up eventually.\n",
+	}
+	m := openTestMemory(t, 20, compactor)
+
+	if err := m.Record("123", change{Section: "Traditions", Entry: "a reasonably wordy tradition or other"}); err != nil {
+		t.Fatal(err)
+	}
+
+	compaction := make(chan error, 1)
+	go func() { compaction <- m.CompactIfNeeded(context.Background(), "123") }()
+	<-compactor.entered
+
+	if err := m.RecordPerson("123", personChange{Name: "Kate", Fact: "Restores arcade cabinets."}); err != nil {
+		t.Fatal(err)
+	}
+
+	close(compactor.release)
+	if err := <-compaction; err != nil {
+		t.Fatal(err)
+	}
+
+	got := m.Load("123")
+	if !strings.Contains(got, "Everyone turns up eventually.") {
+		t.Errorf("the compaction was abandoned over an unrelated roster write: %q", got)
+	}
+	if !strings.Contains(got, "Restores arcade cabinets.") {
+		t.Errorf("the concurrent note about somebody was overwritten: %q", got)
 	}
 }
 
 func TestCompactionLeavesNoTemporaryFilesBehind(t *testing.T) {
 	dir := t.TempDir()
-	m, err := OpenMemory(dir, 8<<10, nil)
+	m, err := OpenMemory(dir, 8<<10, 4<<10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := m.Record("123", change{Section: "People", Entry: "Steve likes boats."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 
