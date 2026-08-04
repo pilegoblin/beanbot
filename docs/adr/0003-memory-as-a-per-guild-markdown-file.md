@@ -1,6 +1,8 @@
 # Memory as a per-Guild markdown file on a Fly volume
 
 > Superseded in part by ADR 0004: the whole document is no longer injected into every Trigger, Compaction no longer covers all of it, and "there is no `forget`" has become a rule the Roster depends on rather than an incidental consequence. Everything else below still holds.
+>
+> The per-turn image budget left open below, as issue #1, was settled by ADR 0005: it became a budget of one per Medium, covering speech as well as images.
 
 BeanBot keeps a markdown document per Guild on a mounted Fly volume, writes to it through a `remember` Capability the model calls, and injects the whole document into every Trigger in that Guild. This partly reverses ADR 0001: BeanBot now holds state of its own, and it is state that a restart can lose.
 
@@ -21,7 +23,7 @@ Nobody waits on Compaction, and that requires two things rather than one. It is 
 ## Consequences
 
 - Memory is ungated: any member can cause a write, because a Memory only moderators may teach is a mod-maintained wiki rather than BeanBot learning from the server. Since supersede can overwrite, deletion is effectively ungated too.
-- That makes the document member-authored text injected into every later prompt — attacker-writable Backstory. It is therefore rendered in the *user* content, fenced and labelled as fallible notes, never in `SystemInstruction`. It cannot reach a Gate, which reads live Discord permissions in Go and never consults the model. The residual exposure is that BeanBot can be taught to say false things, and that `generate_image` is ungated, so a memory entry is a durable way to make it draw — a per-turn image budget is the fix, and is not part of this decision — tracked as issue #1.
+- That makes the document member-authored text injected into every later prompt — attacker-writable Backstory. It is therefore rendered in the *user* content, fenced and labelled as fallible notes, never in `SystemInstruction`. It cannot reach a Gate, which reads live Discord permissions in Go and never consults the model. The residual exposure is that BeanBot can be taught to say false things, and that `generate_image` is ungated, so a memory entry is a durable way to make it draw — a per-turn image budget is the fix, and is not part of this decision — tracked as issue #1, and since settled by ADR 0005.
 - Every entry carries the date and the member who prompted it, which is the only thing that makes the file auditable given ungated writes.
 - `Mutating()` now means *Guild-mutating* specifically. Memory writes are excluded from the one-mutation-per-Trigger budget: they cost no API call and change nothing in Discord, and sharing the budget would break "make the event and remember we do this weekly".
 - `BEANBOT_MEMORY_DIR` unset disables the feature entirely and `remember` is not declared to the model. Set but unmounted is fatal at startup, and BeanBot deliberately does not create the directory: `MkdirAll` would succeed against the container's ephemeral layer when the volume failed to attach, producing Memory that works perfectly until the next deploy empties it.

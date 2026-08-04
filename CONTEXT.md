@@ -21,8 +21,12 @@ The persona instruction that defines who BeanBot is. Supplied per-deployment, no
 _Avoid_: System prompt, personality, character
 
 **Capability**:
-Something BeanBot can do beyond talking — creating a Guild Event, generating an Image, recording a Memory. Declared to the model as a callable tool and executed in Go.
+Something BeanBot can do beyond talking — creating a Guild Event, generating an Image, speaking a Clip, recording a Memory. Declared to the model as a callable tool and executed in Go.
 _Avoid_: Function, action, command, skill
+
+**Clip**:
+A short piece of spoken audio BeanBot generates and posts. Made by Gemini 2.5 Flash TTS — the cheapest of the three text-to-speech models, explicitly *not* the 3.1 Flash or 2.5 Pro ones, which both cost double. The model returns headerless PCM; what reaches Discord is a WAV.
+_Avoid_: Audio, sound file, voice note, TTS, recording
 
 **Compaction**:
 The rewriting of an oversized Memory into a shorter one that keeps the same facts. Performed by the model without the Backstory, so the result is faithful rather than in character. It never touches the Roster: a rewrite that shortens is a rewrite that forgets.
@@ -48,6 +52,10 @@ _Avoid_: Mutating, write, side effect
 Of a Person: named in the Backlog of the current Trigger, or present in it as a speaker, and therefore carried into the prompt in full rather than by name alone.
 _Avoid_: Relevant, active, loaded, retrieved
 
+**Medium**:
+The kind of file a Capability produces — an Image or a Clip. At most one Capability of each Medium runs per Trigger, which is what bounds spending: they are the only Capabilities that cost money per call. Independent of Guild-mutating, so "draw the poster and make the event" spends one of each rather than making them compete.
+_Avoid_: Format, file type, quota
+
 **Memory**:
 What BeanBot knows about one Guild for longer than a conversation — a markdown document, one per Guild, that it writes itself and reads back on every Trigger. It holds attributed facts about the Guild alongside the Roster of the People it has heard of.
 _Avoid_: Notes, knowledge base, long-term context, profile
@@ -71,3 +79,7 @@ _Avoid_: Profile, contact, user, entity
 **Roster**:
 Every Person in one Guild. The part of Memory BeanBot never discards from, never Compacts, and reads back selectively rather than whole.
 _Avoid_: List, directory, address book, people section
+
+**Voice**:
+One of six prebuilt Gemini voices a Clip may be spoken in, each carrying the characteristic that says what it sounds like. Chosen per Clip by the model, not per deployment: BeanBot does impressions rather than having a voice of its own. Six of the thirty Gemini offers, because the choice is declared on every Trigger whether or not anyone wants a Clip.
+_Avoid_: Speaker, accent, tone, persona

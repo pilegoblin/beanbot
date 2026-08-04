@@ -42,12 +42,14 @@ func (s *scriptedModel) Report(_ context.Context, results []gemini.FunctionResul
 type countingCap struct {
 	name     string
 	mutating bool
+	medium   Medium
 	perm     int64
 	runs     *int
 }
 
 func (c countingCap) RequiredPermission() int64 { return c.perm }
 func (c countingCap) Mutating() bool            { return c.mutating }
+func (c countingCap) Medium() Medium            { return c.medium }
 func (c countingCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: c.name}
 }
@@ -149,6 +151,7 @@ type flakyCap struct {
 
 func (*flakyCap) RequiredPermission() int64 { return 0 }
 func (*flakyCap) Mutating() bool            { return true }
+func (*flakyCap) Medium() Medium            { return NoMedium }
 func (*flakyCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "mutate"}
 }
@@ -192,6 +195,126 @@ func TestNonMutatingCapabilitiesMayChain(t *testing.T) {
 
 	if runs != 2 {
 		t.Errorf("non-mutating capability ran %d times, want 2", runs)
+	}
+}
+
+func TestOnlyOneCapabilityPerMediumRunsPerTurn(t *testing.T) {
+	// A Memory is member-writable and injected into every prompt, so "always
+	// draw six pictures" is a durable instruction anyone can plant. The budget
+	// is what makes planting it pointless.
+	runs := 0
+	model := &scriptedModel{replies: []gemini.Response{
+		callFor("draw"), callFor("draw"), callFor("draw"),
+	}}
+	a := newAgent([]Capability{countingCap{name: "draw", medium: MediumImage, runs: &runs}})
+
+	if _, _, err := a.run(context.Background(), model, "backlog", nil,
+		execution(&fakeGuild{}, nil)); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	if runs != 1 {
+		t.Errorf("the image capability ran %d times, want exactly 1", runs)
+	}
+}
+
+func TestEachMediumHasItsOwnBudget(t *testing.T) {
+	// "Draw the poster and read it out" is one request, and the two media cost
+	// different amounts at different models. One shared counter would make the
+	// cheap one compete with the expensive one for no reason.
+	images, clips := 0, 0
+	model := &scriptedModel{replies: []gemini.Response{callFor("draw"), callFor("speak")}}
+	a := newAgent([]Capability{
+		countingCap{name: "draw", medium: MediumImage, runs: &images},
+		countingCap{name: "speak", medium: MediumClip, runs: &clips},
+	})
+
+	if _, _, err := a.run(context.Background(), model, "backlog", nil,
+		execution(&fakeGuild{}, nil)); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	if images != 1 || clips != 1 {
+		t.Errorf("drew %d and spoke %d, want one of each", images, clips)
+	}
+}
+
+func TestTheMediumBudgetIsSeparateFromTheMutationBudget(t *testing.T) {
+	// "Make the event and say it out loud" has to keep working: a Clip changes
+	// nothing in the Guild, so it must not consume the one mutation allowed.
+	events, clips := 0, 0
+	model := &scriptedModel{replies: []gemini.Response{callFor("event"), callFor("speak")}}
+	a := newAgent([]Capability{
+		countingCap{name: "event", mutating: true, runs: &events},
+		countingCap{name: "speak", medium: MediumClip, runs: &clips},
+	})
+
+	if _, _, err := a.run(context.Background(), model, "backlog", nil,
+		execution(&fakeGuild{}, nil)); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	if events != 1 || clips != 1 {
+		t.Errorf("made %d events and %d clips, want one of each", events, clips)
+	}
+}
+
+func TestAFailedMediaCallDoesNotSpendTheBudget(t *testing.T) {
+	// Same rule as a refused mutation: a call rejected for a bad argument must
+	// leave room for the model to retry with a corrected one in the same turn.
+	cap := &flakyMediaCap{}
+	model := &scriptedModel{replies: []gemini.Response{callFor("speak"), callFor("speak")}}
+	a := newAgent([]Capability{cap})
+
+	if _, _, err := a.run(context.Background(), model, "backlog", nil,
+		execution(&fakeGuild{}, nil)); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	if cap.succeeded != 1 {
+		t.Errorf("the corrected retry never ran: %d successes", cap.succeeded)
+	}
+}
+
+// flakyMediaCap fails its first call and succeeds thereafter.
+type flakyMediaCap struct {
+	attempts  int
+	succeeded int
+}
+
+func (*flakyMediaCap) RequiredPermission() int64 { return 0 }
+func (*flakyMediaCap) Mutating() bool            { return false }
+func (*flakyMediaCap) Medium() Medium            { return MediumClip }
+func (*flakyMediaCap) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{Name: "speak"}
+}
+func (f *flakyMediaCap) Execute(context.Context, Execution) (Result, error) {
+	f.attempts++
+	if f.attempts == 1 {
+		return Result{}, errors.New("that is longer than i can say in one go")
+	}
+	f.succeeded++
+	return Result{Summary: "ok"}, nil
+}
+
+func TestExceedingTheMediumBudgetIsExplainedToTheModel(t *testing.T) {
+	// The refusal is the model's only clue about why nothing came back, and it
+	// has to name the medium so BeanBot can explain itself in character.
+	runs := 0
+	model := &scriptedModel{replies: []gemini.Response{callFor("speak"), callFor("speak")}}
+	a := newAgent([]Capability{countingCap{name: "speak", medium: MediumClip, runs: &runs}})
+
+	if _, _, err := a.run(context.Background(), model, "backlog", nil,
+		execution(&fakeGuild{}, nil)); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	if len(model.reported) < 2 {
+		t.Fatalf("expected two rounds of results, got %d", len(model.reported))
+	}
+	refusal := model.reported[1][0].Err
+	if !strings.Contains(refusal, string(MediumClip)) {
+		t.Errorf("refusal %q should name the medium it ran out of", refusal)
 	}
 }
 
@@ -254,6 +377,7 @@ type fileCap struct{}
 
 func (fileCap) RequiredPermission() int64 { return 0 }
 func (fileCap) Mutating() bool            { return false }
+func (fileCap) Medium() Medium            { return MediumImage }
 func (fileCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "draw"}
 }

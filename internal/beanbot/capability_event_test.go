@@ -103,6 +103,7 @@ type twoBitCap struct{ need int64 }
 
 func (c twoBitCap) RequiredPermission() int64 { return c.need }
 func (twoBitCap) Mutating() bool              { return true }
+func (twoBitCap) Medium() Medium              { return NoMedium }
 func (twoBitCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "two_bit"}
 }

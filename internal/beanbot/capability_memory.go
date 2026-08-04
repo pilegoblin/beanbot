@@ -27,6 +27,8 @@ func (remember) RequiredPermission() int64 { return 0 }
 // which is the composition the turn loop exists for.
 func (remember) Mutating() bool { return false }
 
+func (remember) Medium() Medium { return NoMedium }
+
 func (remember) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "remember",
