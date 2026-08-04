@@ -151,6 +151,66 @@ func (t *Turn) generate(ctx context.Context) (Response, error) {
 	return out, nil
 }
 
+// compactionInstruction replaces the Backstory for Compaction, deliberately.
+// The Backstory's whole job is to make BeanBot say things in a distinctive
+// voice; aimed at the one operation whose success criterion is fidelity, it
+// produces a Memory rewritten to be funnier. Compaction overwrites the only
+// copy, so there is nothing left to compare against afterwards.
+const compactionInstruction = `You are compacting a markdown file of notes that a Discord bot keeps about a server, because it has grown too large. Rewrite it at roughly half the length.
+
+Rules:
+- Preserve every distinct fact. Merge duplicate or near-duplicate entries about the same subject into a single entry.
+- Never invent, embellish, reinterpret or joke. Keep the original wording of each fact wherever you can.
+- Drop entries that record passing chatter rather than something lasting about the server or its members.
+- Keep the trailing _(date, @author)_ attribution on every entry. When merging, keep the most recent date.
+- Keep the existing structure: "## Section" headings with "- entry" bullets beneath them.
+- Output the markdown document and nothing else — no preamble, no commentary, no code fences.`
+
+// Compact rewrites an oversized Memory smaller. It bypasses Turn: there is no
+// conversation, no Backstory and no tools, only the document.
+func (p *Prompter) Compact(ctx context.Context, document string) (string, error) {
+	resp, err := p.client.Models.GenerateContent(ctx, ChatModel,
+		[]*genai.Content{genai.NewContentFromText(document, genai.RoleUser)},
+		&genai.GenerateContentConfig{
+			SystemInstruction: genai.NewContentFromText(compactionInstruction, genai.RoleUser),
+			SafetySettings:    permissiveSafety(),
+		})
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+		return "", errors.New("the model returned nothing")
+	}
+
+	var out strings.Builder
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if part.Text != "" && !part.Thought {
+			out.WriteString(part.Text)
+		}
+	}
+
+	return stripCodeFence(out.String()), nil
+}
+
+// stripCodeFence unwraps a ```markdown block. The instruction forbids fences
+// and the model supplies them anyway often enough that the fence would
+// otherwise be stored as the first line of the Memory.
+func stripCodeFence(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if !strings.HasPrefix(trimmed, "```") {
+		return s
+	}
+
+	_, rest, found := strings.Cut(trimmed, "\n")
+	if !found {
+		return s
+	}
+	if end := strings.LastIndex(rest, "```"); end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.TrimSpace(rest)
+}
+
 // GenerateImage draws with Nano Banana. Supplying inputs turns generation into
 // editing — the same call, with the source pictures attached.
 func (p *Prompter) GenerateImage(ctx context.Context, prompt string, inputs []Image) (Image, error) {
