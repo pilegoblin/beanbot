@@ -22,28 +22,28 @@ type person struct {
 	name    string
 	id      string
 	aliases []string
-	facts   []string
+	claims  []string
 }
 
 // roster is every Person in one Guild, plus any bullets found directly under
 // the People heading. Those orphans belong to nobody — Compaction writes
 // freely-shaped markdown and the file can be hand-edited — and are kept
-// verbatim rather than guessed at, because losing a recorded fact is worse
+// verbatim rather than guessed at, because losing a recorded Claim is worse
 // than keeping an oddly placed one.
 type roster struct {
 	orphans []string
 	people  []*person
 }
 
-// personChange is one edit to the Roster: a fact about somebody, optionally
-// superseding a fact already recorded about them.
+// personChange is one edit to the Roster: a Claim about somebody, optionally
+// superseding one already recorded about them.
 //
 // ID is filled in by Go, never by the model. A wrong snowflake welds two humans
 // together permanently and nothing downstream will ever question it, so it is
 // captured only where Discord stated it directly.
 type personChange struct {
 	Name     string
-	Fact     string
+	Claim    string
 	Aliases  []string
 	ID       string
 	Replaces string
@@ -59,11 +59,11 @@ func applyMerge(raw, from, into string) (string, error) {
 
 func (r *roster) apply(ch personChange) error {
 	name := strings.TrimSpace(ch.Name)
-	fact := cleanFact(ch.Fact)
+	claim := cleanClaim(ch.Claim)
 	if name == "" {
 		return errors.New("a note about somebody needs their name")
 	}
-	if fact == "" {
+	if claim == "" {
 		return errors.New("a note about somebody needs something to record")
 	}
 
@@ -86,23 +86,23 @@ func (r *roster) apply(ch personChange) error {
 
 	replaces := strings.TrimSpace(ch.Replaces)
 	if replaces == "" {
-		p.facts = append(p.facts, fact)
+		p.claims = append(p.claims, claim)
 		return nil
 	}
 
-	i := findEntry(p.facts, replaces)
+	i := findEntry(p.claims, replaces)
 	if i < 0 {
 		// Reported back to the model, which can retry as a plain addition rather
 		// than silently recording a correction to nothing.
 		return fmt.Errorf("nothing recorded about %s matches %q — quote an existing note to "+
 			"correct it, or leave that out to record something new", p.name, replaces)
 	}
-	p.facts[i] = fact
+	p.claims[i] = claim
 	return nil
 }
 
 // merge folds one Person into another once both turn out to be the same human.
-// Every fact moves across and the absorbed name survives as an alias, so a
+// Every Claim moves across and the absorbed name survives as an alias, so a
 // merge loses nothing — which is why, unlike a deletion, it needs no Gate.
 func (r *roster) merge(from, into string) error {
 	loser := r.find(strings.TrimSpace(from), "")
@@ -118,7 +118,7 @@ func (r *roster) merge(from, into string) error {
 		return fmt.Errorf("%q and %q are already the same person in my notes", from, into)
 	}
 
-	winner.facts = append(winner.facts, loser.facts...)
+	winner.claims = append(winner.claims, loser.claims...)
 	winner.learnAliases(append([]string{loser.name}, loser.aliases...))
 	if winner.id == "" {
 		winner.id = loser.id
@@ -151,11 +151,11 @@ func (r *roster) render(precededByText bool) string {
 	}
 
 	for _, p := range r.people {
-		// Only somebody with nothing recorded about them at all — no facts, no
+		// Only somebody with nothing recorded about them at all — no Claims, no
 		// identity, nothing but a heading — is dropped. A Person carrying only
-		// an identity line still knows who they are, and that is a recorded fact
+		// an identity line still knows who they are, and that is a recorded Claim
 		// like any other.
-		if len(p.facts) == 0 && p.identityLine() == "" {
+		if len(p.claims) == 0 && p.identityLine() == "" {
 			continue
 		}
 		b.WriteString("\n")
@@ -234,15 +234,15 @@ func (p *person) render() string {
 	if line := p.identityLine(); line != "" {
 		b.WriteString(line + "\n")
 	}
-	for _, fact := range p.facts {
-		b.WriteString("- " + fact + "\n")
+	for _, claim := range p.claims {
+		b.WriteString("- " + claim + "\n")
 	}
 	return b.String()
 }
 
 // identityLine renders the snowflake and aliases as an HTML comment: a shape
-// that cannot collide with a fact, since facts are member-authored text and one
-// that parsed as an identity would let anyone staple a snowflake onto anyone.
+// that cannot collide with a Claim, since Claims are member-authored text and
+// one that parsed as an identity would let anyone staple a snowflake onto anyone.
 // It stays plainly readable in the file, which is the point of a markdown
 // Memory readable over `fly ssh`.
 func (p *person) identityLine() string {
@@ -287,24 +287,24 @@ func parseIdentityLine(line string) (id string, aliases []string) {
 	return id, aliases
 }
 
-// cleanFact flattens a fact onto one line and strips any HTML comment from it,
+// cleanClaim flattens a Claim onto one line and strips any HTML comment from it,
 // so member-authored text cannot forge an identity line or a heading and end up
 // rewriting who somebody is.
-func cleanFact(fact string) string {
+func cleanClaim(claim string) string {
 	for {
-		open := strings.Index(fact, "<!--")
+		open := strings.Index(claim, "<!--")
 		if open < 0 {
 			break
 		}
-		end := strings.Index(fact[open:], "-->")
+		end := strings.Index(claim[open:], "-->")
 		if end < 0 {
-			fact = fact[:open]
+			claim = claim[:open]
 			break
 		}
-		fact = fact[:open] + fact[open+end+len("-->"):]
+		claim = claim[:open] + claim[open+end+len("-->"):]
 	}
 
-	return strings.Join(strings.Fields(fact), " ")
+	return strings.Join(strings.Fields(claim), " ")
 }
 
 // findEntry locates the entry a change supersedes. The match is loose —

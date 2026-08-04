@@ -8,8 +8,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func at(hhmm string) time.Time {
-	t, err := time.Parse("15:04", hhmm)
+// at parses a test timestamp, defaulting to 4 August 2026 — a Tuesday — when
+// only a clock time is given. Dates are real ones because the Backlog now prints
+// the day, so a zero-value year would render as "Monday 1 January 1".
+func at(when string) time.Time {
+	if t, err := time.Parse("2006-01-02 15:04", when); err == nil {
+		return t
+	}
+	t, err := time.Parse("2006-01-02 15:04", "2026-08-04 "+when)
 	if err != nil {
 		panic(err)
 	}
@@ -32,11 +38,80 @@ func TestBacklogReadsOldestFirst(t *testing.T) {
 		msg("Drew", "1", "anyone up for smash tonight", "14:03"),
 	}
 
-	got := renderBacklog(backlog, botID, time.UTC)
+	got, _ := renderBacklog(backlog, botID, time.UTC)
 
-	want := "[14:03] Drew: anyone up for smash tonight\n[14:04] Sam: i'm down after 8"
+	want := "— Tuesday 4 August 2026 —\n" +
+		"1. [14:03] Drew: anyone up for smash tonight\n" +
+		"2. [14:04] Sam: i'm down after 8"
 	if got != want {
 		t.Errorf("backlog out of order:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestBacklogRestatesTheDateOnlyWhenItChanges(t *testing.T) {
+	// A model shown nothing but clock times reads a three-month window as
+	// happening this afternoon — it cannot judge how stale a Claim is, and it
+	// resolves "friday" from last week against this one.
+	backlog := []*discordgo.Message{
+		msg("Sam", "2", "sorry, only just saw this", "2026-08-04 09:15"),
+		msg("Kim", "3", "maybe", "2026-08-01 14:09"),
+		msg("Drew", "1", "anyone up for smash friday", "2026-08-01 14:03"),
+	}
+
+	got, _ := renderBacklog(backlog, botID, time.UTC)
+
+	want := "— Saturday 1 August 2026 —\n" +
+		"1. [14:03] Drew: anyone up for smash friday\n" +
+		"2. [14:09] Kim: maybe\n" +
+		"— Tuesday 4 August 2026 —\n" +
+		"3. [09:15] Sam: sorry, only just saw this"
+	if got != want {
+		t.Errorf("day separators wrong:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestBacklogNumbersOnlyTheLinesItActuallyPrints(t *testing.T) {
+	// The numbering is what a Claim points at, so it has to count printed lines
+	// rather than messages. Derived from the message slice instead, it drifts by
+	// one on every join and pin — and a drifted number still resolves, to a real
+	// neighbouring speaker, which is a misattribution nothing downstream can spot.
+	backlog := []*discordgo.Message{
+		msg("Kim", "3", "same", "14:05"),
+		msg("Sam", "2", "", "14:04"),
+		msg("Drew", "1", "smash tonight?", "14:03"),
+	}
+
+	got, sources := renderBacklog(backlog, botID, time.UTC)
+
+	if !strings.Contains(got, "1. [14:03] Drew:") || !strings.Contains(got, "2. [14:05] Kim:") {
+		t.Errorf("the skipped message left a hole in the numbering:\n%s", got)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("got %d sources for 2 printed lines: %v", len(sources), sources)
+	}
+	if sources[0].speaker != "Drew" || sources[1].speaker != "Kim" {
+		t.Errorf("sources do not line up with the printed lines: %v", sources)
+	}
+}
+
+func TestBacklogMarksBeanbotsOwnLinesAsItsOwn(t *testing.T) {
+	// Numbered like any other line so the numbering matches what the model reads,
+	// and flagged so a Claim cannot be sourced from BeanBot's own recollection.
+	backlog := []*discordgo.Message{
+		msg("BeanBot", botID, "i have made the event", "14:06"),
+		msg("Drew", "1", "make an event", "14:05"),
+	}
+
+	_, sources := renderBacklog(backlog, botID, time.UTC)
+
+	if len(sources) != 2 {
+		t.Fatalf("got %d sources, want 2", len(sources))
+	}
+	if sources[0].mine {
+		t.Error("a member's line was marked as beanbot's own")
+	}
+	if !sources[1].mine {
+		t.Error("beanbot's own line was not marked as its own")
 	}
 }
 
@@ -48,7 +123,7 @@ func TestBacklogResolvesMentionsToNames(t *testing.T) {
 		{ID: botID, Username: "BeanBot"},
 	}
 
-	got := renderBacklog([]*discordgo.Message{m}, botID, time.UTC)
+	got, _ := renderBacklog([]*discordgo.Message{m}, botID, time.UTC)
 
 	if !strings.Contains(got, "@Sam and @BeanBot should settle this") {
 		t.Errorf("expected mentions resolved to names, got:\n%s", got)
@@ -61,9 +136,9 @@ func TestBacklogLabelsBeanbotsOwnLines(t *testing.T) {
 		msg("BeanBot", botID, "i have made the event", "14:06"),
 	}
 
-	got := renderBacklog(backlog, botID, time.UTC)
+	got, _ := renderBacklog(backlog, botID, time.UTC)
 
-	if !strings.HasPrefix(got, "[14:06] BeanBot (you):") {
+	if !strings.Contains(got, "1. [14:06] BeanBot (you):") {
 		t.Errorf("expected beanbot's own line marked as its own, got:\n%s", got)
 	}
 }
@@ -74,7 +149,7 @@ func TestBacklogNotesAttachments(t *testing.T) {
 	m := msg("Kim", "3", "look at this", "14:02")
 	m.Attachments = []*discordgo.MessageAttachment{{Filename: "cat.png", ContentType: "image/png"}}
 
-	got := renderBacklog([]*discordgo.Message{m}, botID, time.UTC)
+	got, _ := renderBacklog([]*discordgo.Message{m}, botID, time.UTC)
 
 	if !strings.Contains(got, "[image: cat.png]") {
 		t.Errorf("expected attachment noted inline, got:\n%s", got)
@@ -89,9 +164,9 @@ func TestBacklogSkipsEmptyMessages(t *testing.T) {
 		msg("Sam", "2", "", "14:04"),
 	}
 
-	got := renderBacklog(backlog, botID, time.UTC)
+	got, sources := renderBacklog(backlog, botID, time.UTC)
 
-	if strings.Count(got, "\n") != 0 {
+	if strings.Contains(got, "2.") || len(sources) != 1 {
 		t.Errorf("expected empty message dropped, got:\n%s", got)
 	}
 }

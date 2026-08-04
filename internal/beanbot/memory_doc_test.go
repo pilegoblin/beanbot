@@ -6,7 +6,7 @@ import (
 )
 
 func TestRecordingIntoAnEmptyMemoryCreatesTheSection(t *testing.T) {
-	got, err := applyChange("", change{Section: "Traditions", Entry: "Thursday is game night."})
+	got, err := applyChange("", change{Section: "Traditions", Claim: "Thursday is game night."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestRecordingIntoAnEmptyMemoryCreatesTheSection(t *testing.T) {
 func TestASecondEntryJoinsTheSectionItBelongsTo(t *testing.T) {
 	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "Traditions", Entry: "Sunday is a roast."})
+	got, err := applyChange(doc, change{Section: "Traditions", Claim: "Sunday is a roast."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestSectionMatchingIgnoresCase(t *testing.T) {
 	// match the capitalisation. Two "Traditions" sections is a split memory.
 	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "traditions", Entry: "Sunday is a roast."})
+	got, err := applyChange(doc, change{Section: "traditions", Claim: "Sunday is a roast."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestSectionMatchingIgnoresCase(t *testing.T) {
 func TestAnUnknownSectionIsAppendedAfterTheExistingOnes(t *testing.T) {
 	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "Running jokes", Entry: "Nobody explains the sandwich."})
+	got, err := applyChange(doc, change{Section: "Running jokes", Claim: "Nobody explains the sandwich."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestSupersedingAnEntryReplacesItInPlace(t *testing.T) {
 
 	got, err := applyChange(doc, change{
 		Section:  "Traditions",
-		Entry:    "Game night moved to Fridays.",
+		Claim:    "Game night moved to Fridays.",
 		Replaces: "Game night is on Thursdays",
 	})
 	if err != nil {
@@ -94,7 +94,7 @@ func TestSupersedingMatchesOnASubstringOfTheEntry(t *testing.T) {
 
 	got, err := applyChange(doc, change{
 		Section:  "Traditions",
-		Entry:    "Game night moved to Fridays. _(2026-08-04, @kate)_",
+		Claim:    "Game night moved to Fridays. _(2026-08-04, @kate)_",
 		Replaces: "game night is   ON thursdays",
 	})
 	if err != nil {
@@ -111,7 +111,7 @@ func TestSupersedingSomethingThatIsNotThereFails(t *testing.T) {
 	// rather than silently recording a correction to nothing.
 	_, err := applyChange("## Traditions\n- Sunday is a roast.\n", change{
 		Section:  "Traditions",
-		Entry:    "Game night moved to Fridays.",
+		Claim:    "Game night moved to Fridays.",
 		Replaces: "Game night is on Thursdays",
 	})
 
@@ -130,7 +130,7 @@ func TestSupersedingAnEntryFiledElsewhereMovesIt(t *testing.T) {
 
 	got, err := applyChange(doc, change{
 		Section:  "Traditions",
-		Entry:    "Thursday is game night.",
+		Claim:    "Thursday is game night.",
 		Replaces: "Thursday is game night",
 	})
 	if err != nil {
@@ -146,7 +146,7 @@ func TestSupersedingAnEntryFiledElsewhereMovesIt(t *testing.T) {
 }
 
 func TestAnEntryWithNoSectionIsRefused(t *testing.T) {
-	if _, err := applyChange("", change{Entry: "Thursday is game night."}); err == nil {
+	if _, err := applyChange("", change{Claim: "Thursday is game night."}); err == nil {
 		t.Error("a change with no section should fail")
 	}
 }
@@ -155,7 +155,7 @@ func TestATopicalNoteMayNotBeFiledUnderPeople(t *testing.T) {
 	// Otherwise what BeanBot knows about somebody splits between a heading with
 	// their name on it and a loose bullet nothing can find. The refusal is
 	// reported back so the model retries through remember_person.
-	_, err := applyChange("", change{Section: "people", Entry: "Steve hates boats."})
+	_, err := applyChange("", change{Section: "people", Claim: "Steve hates boats."})
 
 	if err == nil {
 		t.Fatal("the People section is reserved for the Roster")
@@ -166,7 +166,7 @@ func TestATopicalNoteMayNotBeFiledUnderPeople(t *testing.T) {
 }
 
 func TestAnEmptySectionIsRefused(t *testing.T) {
-	if _, err := applyChange("", change{Section: "Traditions", Entry: "   "}); err == nil {
+	if _, err := applyChange("", change{Section: "Traditions", Claim: "   "}); err == nil {
 		t.Error("a change with no entry should fail")
 	}
 }

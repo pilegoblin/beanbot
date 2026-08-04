@@ -10,15 +10,15 @@ import (
 // optionally superseding something already recorded.
 //
 // The model submits a change rather than a rewritten document. A whole-document
-// write would retype every fact through the model on every call, turning
+// write would retype every Claim through the model on every call, turning
 // paraphrase drift from an occasional cost of Compaction into a certainty of
 // every write — and it would overwrite from a snapshot read seconds earlier,
 // silently erasing anything recorded in between.
 type change struct {
-	// Section is the heading to file the entry under, created if absent.
+	// Section is the heading to file the Claim under, created if absent.
 	Section string
-	// Entry is the line to record, already carrying its attribution.
-	Entry string
+	// Claim is the line to record, already carrying its Attribution.
+	Claim string
 	// Replaces quotes an existing entry this one supersedes. Empty adds.
 	Replaces string
 }
@@ -63,7 +63,7 @@ func editMemory(raw string, edit func(*memoryDoc) error) (string, error) {
 
 func (d *memoryDoc) apply(ch change) error {
 	title := strings.TrimSpace(ch.Section)
-	entry := strings.TrimSpace(ch.Entry)
+	entry := strings.TrimSpace(ch.Claim)
 	if title == "" {
 		return errors.New("a memory needs a section to file it under")
 	}
@@ -170,14 +170,14 @@ func parseMemory(raw string) *memoryDoc {
 
 		// Only ever the line directly under a Person's heading. Anywhere else it
 		// is text somebody wrote, not a claim about who they are.
-		case who != nil && len(who.facts) == 0 && isIdentityLine(trimmed):
+		case who != nil && len(who.claims) == 0 && isIdentityLine(trimmed):
 			who.id, who.aliases = parseIdentityLine(trimmed)
 
 		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 			entry := strings.TrimSpace(trimmed[2:])
 			switch {
 			case who != nil:
-				who.facts = append(who.facts, entry)
+				who.claims = append(who.claims, entry)
 			case inRoster:
 				doc.roster.orphans = append(doc.roster.orphans, entry)
 			case current == nil:
@@ -192,7 +192,7 @@ func parseMemory(raw string) *memoryDoc {
 			// dropped, because losing a recorded fact is the worse failure.
 			switch {
 			case who != nil:
-				who.facts = appendProse(who.facts, trimmed)
+				who.claims = appendProse(who.claims, trimmed)
 			case inRoster:
 				doc.roster.orphans = appendProse(doc.roster.orphans, trimmed)
 			case current == nil:
