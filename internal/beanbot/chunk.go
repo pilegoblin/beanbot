@@ -46,6 +46,22 @@ func boundaryBefore(text string, limit int) int {
 			return i
 		}
 	}
+	return withoutDanglingEscape(window)
+}
+
+// withoutDanglingEscape pulls a hard cut back so it cannot fall between a
+// backslash and the character it escapes, which would emit a stray backslash
+// and leave the next chunk's first character unescaped. Only an odd run of
+// trailing backslashes is dangling; an even run is escaped backslashes.
+func withoutDanglingEscape(window string) int {
+	trailing := 0
+	for trailing < len(window) && window[len(window)-1-trailing] == '\\' {
+		trailing++
+	}
+
+	if trailing%2 == 1 && len(window) > 1 {
+		return len(window) - 1
+	}
 	return len(window)
 }
 

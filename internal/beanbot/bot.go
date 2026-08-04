@@ -180,7 +180,9 @@ func situate(backlog string, now time.Time) string {
 }
 
 func (bb *BeanBot) say(channelID, replyTo, text string, files []*discordgo.File) {
-	chunks := splitMessage(text, discordMessageLimit)
+	// Escape before splitting so the length limit counts what Discord will
+	// actually receive.
+	chunks := splitMessage(escapeMarkdown(text), discordMessageLimit)
 	if len(chunks) == 0 && len(files) == 0 {
 		return
 	}
