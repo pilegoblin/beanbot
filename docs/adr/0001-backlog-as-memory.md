@@ -1,5 +1,7 @@
 # Backlog as memory, not accumulating chat sessions
 
+> **Partly superseded by ADR 0003.** BeanBot now keeps a per-Guild Memory on a volume, so two claims below are no longer true: there *is* state to lose across a restart, and per-Guild state now has somewhere to live. Everything about conversation state still holds — the Backlog remains the only record of what was said, and there is still no accumulating chat session.
+
 BeanBot originally held a single global `*genai.Chat` shared across every guild, channel and user, guarded by one mutex. We replaced it with no retained conversation state at all: on each Trigger, BeanBot fetches the recent messages of that channel from Discord and sends them as context.
 
 ## Considered Options

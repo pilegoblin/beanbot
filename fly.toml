@@ -8,6 +8,13 @@ primary_region = 'iad'
 
 [build]
 
+# BeanBot's Memory. A volume binds to one machine, so deploys stop and restart
+# rather than rolling. Create it with:
+#   fly volumes create beanbot_memory -r iad -s 1
+[mounts]
+  source = 'beanbot_memory'
+  destination = '/data'
+
 [http_service]
   internal_port = 8080
   force_https = true

@@ -28,10 +28,13 @@ type Execution struct {
 	GuildID   string
 	ChannelID string
 	UserID    string
-	Images    []gemini.Image
-	Now       time.Time
-	Location  *time.Location
-	Guild     Guild
+	// Author is what the channel calls the member who sent the Trigger, the
+	// same name the Backlog shows. UserID identifies them; this attributes them.
+	Author   string
+	Images   []gemini.Image
+	Now      time.Time
+	Location *time.Location
+	Guild    Guild
 }
 
 // Result is what a Capability produces. Summary is fed back to the model so it
@@ -50,8 +53,10 @@ type Capability interface {
 	// RequiredPermission is the Discord permission the requesting member must
 	// hold. Zero means anyone may ask.
 	RequiredPermission() int64
-	// Mutating reports whether this changes guild state. At most one mutating
-	// Capability runs per turn.
+	// Mutating reports whether this changes *Guild* state — the server's event
+	// list, its channels, anything visible in Discord. At most one Guild-mutating
+	// Capability runs per turn. Writing to Memory is a mutation that deliberately
+	// does not count: it costs no API call and changes nothing in the Guild.
 	Mutating() bool
 	Execute(ctx context.Context, inv Execution) (Result, error)
 }
