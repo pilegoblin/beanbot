@@ -2,8 +2,8 @@ package beanbot
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -75,7 +75,27 @@ func checkGate(c Capability, inv Execution) error {
 	if have&discordgo.PermissionAdministrator != 0 || have&need == need {
 		return nil
 	}
-	return errors.New("you don't have permission to do that")
+
+	// A refusal is nearly always a misconfiguration rather than an actual
+	// intruder, and the bitfield is the only thing that says which.
+	log.Printf("gate refused user %s in channel %s: have %#x, need %#x",
+		inv.UserID, inv.ChannelID, have, need)
+	return fmt.Errorf("you need the %q permission in this server to do that", permissionName(need))
+}
+
+// permissionName names a permission the way Discord's own UI does, so a
+// refusal tells someone which switch to flick.
+func permissionName(bit int64) string {
+	switch bit {
+	case discordgo.PermissionManageEvents:
+		return "Manage Events"
+	case discordgo.PermissionManageServer:
+		return "Manage Server"
+	case discordgo.PermissionManageMessages:
+		return "Manage Messages"
+	default:
+		return fmt.Sprintf("permission %#x", bit)
+	}
 }
 
 // argString reads a required string argument from the model's chosen arguments.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"google.golang.org/genai"
 )
@@ -129,15 +130,24 @@ func (t *Turn) generate(ctx context.Context) (Response, error) {
 	// already made when results come back.
 	t.contents = append(t.contents, resp.Candidates[0].Content)
 
-	out := Response{Text: resp.Text()}
+	// Assembled by hand rather than via resp.Text(), which logs a warning on
+	// every response that also carries a function call — i.e. every response
+	// where BeanBot actually does something.
+	var out Response
+	var text strings.Builder
 	for _, part := range resp.Candidates[0].Content.Parts {
-		if part.FunctionCall != nil {
+		switch {
+		case part.FunctionCall != nil:
 			out.FunctionCalls = append(out.FunctionCalls, FunctionCall{
 				Name: part.FunctionCall.Name,
 				Args: part.FunctionCall.Args,
 			})
+		case part.Text != "" && !part.Thought:
+			text.WriteString(part.Text)
 		}
 	}
+
+	out.Text = text.String()
 	return out, nil
 }
 
@@ -169,8 +179,14 @@ func (p *Prompter) GenerateImage(ctx context.Context, prompt string, inputs []Im
 	}
 
 	// The model answered in words instead of pictures, usually to refuse.
-	if text := resp.Text(); text != "" {
-		return Image{}, fmt.Errorf("no image was produced: %s", text)
+	var refusal strings.Builder
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if part.Text != "" && !part.Thought {
+			refusal.WriteString(part.Text)
+		}
+	}
+	if refusal.Len() > 0 {
+		return Image{}, fmt.Errorf("no image was produced: %s", refusal.String())
 	}
 	return Image{}, errors.New("no image was produced")
 }
