@@ -8,6 +8,10 @@ A Discord bot with a persona, driven by Gemini. Members talk to it in a channel;
 The single Discord message that wakes BeanBot — by naming it, @mentioning it, or replying to something it said. BeanBot never speaks uninvited.
 _Avoid_: Command, invocation, prompt
 
+**Alias**:
+Another name a Person is known by, recorded alongside their canonical name so that whatever the channel actually calls them still finds them.
+_Avoid_: Nickname, aka, synonym, handle
+
 **Backlog**:
 The recent messages of the channel a Trigger arrived in, fetched from Discord at request time. BeanBot keeps no conversation state of its own; what it retains beyond the Backlog is Memory, and that holds facts rather than conversation.
 _Avoid_: History, context window, session, transcript
@@ -21,7 +25,7 @@ Something BeanBot can do beyond talking — creating a Guild Event, generating a
 _Avoid_: Function, action, command, skill
 
 **Compaction**:
-The rewriting of an oversized Memory into a shorter one that keeps the same facts. Performed by the model without the Backstory, so the result is faithful rather than in character.
+The rewriting of an oversized Memory into a shorter one that keeps the same facts. Performed by the model without the Backstory, so the result is faithful rather than in character. It never touches the Roster: a rewrite that shortens is a rewrite that forgets.
 _Avoid_: Summarising, pruning, garbage collection
 
 **Configured Timezone**:
@@ -40,10 +44,30 @@ _Avoid_: Meeting, calendar entry, party
 Of a Capability: that it changes something visible in the Guild. At most one runs per Trigger. Recording a Memory is a change but not a Guild-mutating one.
 _Avoid_: Mutating, write, side effect
 
+**In Play**:
+Of a Person: named in the Backlog of the current Trigger, or present in it as a speaker, and therefore carried into the prompt in full rather than by name alone.
+_Avoid_: Relevant, active, loaded, retrieved
+
 **Memory**:
-What BeanBot knows about one Guild for longer than a conversation — a markdown document of attributed facts, one per Guild, that it writes itself and reads back on every Trigger.
+What BeanBot knows about one Guild for longer than a conversation — a markdown document, one per Guild, that it writes itself and reads back on every Trigger. It holds attributed facts about the Guild alongside the Roster of the People it has heard of.
 _Avoid_: Notes, knowledge base, long-term context, profile
+
+**Merge**:
+The folding of one Person into another once both turn out to be the same human. Every fact moves across and the absorbed name survives as an Alias, so a Merge loses nothing.
+_Avoid_: Dedupe, link, combine
+
+**Name Index**:
+The bare list of the People who are not In Play, carried into every Trigger alongside those who are. It is what lets BeanBot know who he knows when the details are not in front of him.
+_Avoid_: Table of contents, directory, summary
 
 **Nano Banana**:
 Gemini 2.5 Flash Image, the model BeanBot uses to generate and edit images. Explicitly *not* Nano Banana Pro (Gemini 3 Pro Image), which is a different, costlier model.
 _Avoid_: The image model, Imagen
+
+**Person**:
+A human BeanBot has learned something about — a member of the Guild, or someone who is only ever talked about. Created the first time there is a fact to attach, never by contact alone.
+_Avoid_: Profile, contact, user, entity
+
+**Roster**:
+Every Person in one Guild. The part of Memory BeanBot never discards from, never Compacts, and reads back selectively rather than whole.
+_Avoid_: List, directory, address book, people section

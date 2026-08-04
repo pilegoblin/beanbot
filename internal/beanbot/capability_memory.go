@@ -31,16 +31,19 @@ func (remember) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "remember",
 		Description: "Write something down in your long-term notes about this server, so you " +
-			"still know it in conversations weeks from now. Use it for things that last — who " +
-			"people are, what they like and dislike, running jokes, traditions, how the server " +
-			"works — not for passing chatter. Also use it to correct a note that is now wrong.",
+			"still know it in conversations weeks from now. Use it for things that last about " +
+			"the server itself — running jokes, traditions, how the place works — not for " +
+			"passing chatter, and not for anything about a particular person, which goes in " +
+			"remember_person instead. Also use it to correct a note that is now wrong.",
 		Parameters: &genai.Schema{
 			Type: genai.TypeObject,
 			Properties: map[string]*genai.Schema{
 				"section": {
 					Type: genai.TypeString,
-					Description: "The heading to file this under, e.g. \"People\", \"Traditions\", " +
-						"\"Running jokes\". Reuse a heading already in your notes whenever one fits.",
+					Description: "The heading to file this under, e.g. \"Traditions\", " +
+						"\"Running jokes\", \"How this server works\". Reuse a heading already in " +
+						"your notes whenever one fits. \"People\" is not available here — notes " +
+						"about a person go in remember_person.",
 				},
 				"entry": {
 					Type: genai.TypeString,

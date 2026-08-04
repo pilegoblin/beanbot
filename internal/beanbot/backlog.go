@@ -43,6 +43,38 @@ func renderBacklog(backlog []*discordgo.Message, botID string, loc *time.Locatio
 	return strings.Join(lines, "\n")
 }
 
+// speakersIn lists everyone who spoke in the Backlog, paired with the name it
+// shows them under. That pairing is what finds a Person whose notes are headed
+// with the name they used to go by.
+func speakersIn(backlog []*discordgo.Message) []namedUser {
+	var speakers []namedUser
+	seen := map[string]bool{}
+
+	for _, m := range backlog {
+		if m == nil || m.Author == nil || seen[m.Author.ID] {
+			continue
+		}
+		seen[m.Author.ID] = true
+		speakers = append(speakers, namedUser{ID: m.Author.ID, Name: displayName(m)})
+	}
+	return speakers
+}
+
+// mentionsIn lists the users @-mentioned in one message, already resolved by
+// Discord. They are named the way resolveMentions writes them into the Backlog,
+// which is the spelling the model will be working from.
+func mentionsIn(m *discordgo.Message) []namedUser {
+	var mentions []namedUser
+	for _, u := range m.Mentions {
+		name := u.GlobalName
+		if name == "" {
+			name = u.Username
+		}
+		mentions = append(mentions, namedUser{ID: u.ID, Name: name})
+	}
+	return mentions
+}
+
 // resolveMentions rewrites "<@id>" into "@Name" so the model can tell who is
 // being addressed. Unresolvable IDs are left alone rather than guessed at.
 func resolveMentions(m *discordgo.Message) string {

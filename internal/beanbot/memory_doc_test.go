@@ -6,82 +6,82 @@ import (
 )
 
 func TestRecordingIntoAnEmptyMemoryCreatesTheSection(t *testing.T) {
-	got, err := applyChange("", change{Section: "People", Entry: "Steve likes boats."})
+	got, err := applyChange("", change{Section: "Traditions", Entry: "Thursday is game night."})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := "## People\n- Steve likes boats.\n"
+	want := "## Traditions\n- Thursday is game night.\n"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestASecondEntryJoinsTheSectionItBelongsTo(t *testing.T) {
-	doc := "## People\n- Steve likes boats.\n"
+	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "People", Entry: "Kate hates boats."})
+	got, err := applyChange(doc, change{Section: "Traditions", Entry: "Sunday is a roast."})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if strings.Count(got, "## People") != 1 {
+	if strings.Count(got, "## Traditions") != 1 {
 		t.Errorf("the section was duplicated: %q", got)
 	}
-	if !strings.Contains(got, "- Steve likes boats.\n- Kate hates boats.\n") {
+	if !strings.Contains(got, "- Thursday is game night.\n- Sunday is a roast.\n") {
 		t.Errorf("the entry did not land under the heading: %q", got)
 	}
 }
 
 func TestSectionMatchingIgnoresCase(t *testing.T) {
 	// The model retypes the heading from what it was shown and will not always
-	// match the capitalisation. Two "People" sections is a split memory.
-	doc := "## People\n- Steve likes boats.\n"
+	// match the capitalisation. Two "Traditions" sections is a split memory.
+	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "people", Entry: "Kate hates boats."})
+	got, err := applyChange(doc, change{Section: "traditions", Entry: "Sunday is a roast."})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if strings.Count(strings.ToLower(got), "## people") != 1 {
+	if strings.Count(strings.ToLower(got), "## traditions") != 1 {
 		t.Errorf("case difference split the section: %q", got)
 	}
 }
 
 func TestAnUnknownSectionIsAppendedAfterTheExistingOnes(t *testing.T) {
-	doc := "## People\n- Steve likes boats.\n"
+	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyChange(doc, change{Section: "Traditions", Entry: "Thursday is game night."})
+	got, err := applyChange(doc, change{Section: "Running jokes", Entry: "Nobody explains the sandwich."})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if strings.Index(got, "## People") > strings.Index(got, "## Traditions") {
+	if strings.Index(got, "## Traditions") > strings.Index(got, "## Running jokes") {
 		t.Errorf("the new section jumped ahead of the existing one: %q", got)
 	}
-	if !strings.Contains(got, "## Traditions\n- Thursday is game night.\n") {
+	if !strings.Contains(got, "## Running jokes\n- Nobody explains the sandwich.\n") {
 		t.Errorf("the new section is malformed: %q", got)
 	}
 }
 
 func TestSupersedingAnEntryReplacesItInPlace(t *testing.T) {
-	doc := "## People\n- Steve is allergic to peanuts.\n- Kate hates boats.\n"
+	doc := "## Traditions\n- Game night is on Thursdays.\n- Sunday is a roast.\n"
 
 	got, err := applyChange(doc, change{
-		Section:  "People",
-		Entry:    "Steve is not allergic to anything.",
-		Replaces: "Steve is allergic to peanuts",
+		Section:  "Traditions",
+		Entry:    "Game night moved to Fridays.",
+		Replaces: "Game night is on Thursdays",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(got, "allergic to peanuts") {
+	if strings.Contains(got, "on Thursdays") {
 		t.Errorf("the superseded entry survived: %q", got)
 	}
 	// Position is preserved so an ordinary correction does not reshuffle the
 	// document and hand compaction gratuitous churn.
-	want := "## People\n- Steve is not allergic to anything.\n- Kate hates boats.\n"
+	want := "## Traditions\n- Game night moved to Fridays.\n- Sunday is a roast.\n"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -90,18 +90,18 @@ func TestSupersedingAnEntryReplacesItInPlace(t *testing.T) {
 func TestSupersedingMatchesOnASubstringOfTheEntry(t *testing.T) {
 	// Entries carry a trailing attribution the model is unlikely to reproduce
 	// exactly, so an exact-match requirement would make correction unusable.
-	doc := "## People\n- Steve is allergic to peanuts. _(2026-03-02, @steve)_\n"
+	doc := "## Traditions\n- Game night is on Thursdays. _(2026-03-02, @steve)_\n"
 
 	got, err := applyChange(doc, change{
-		Section:  "People",
-		Entry:    "Steve is fine with peanuts. _(2026-08-04, @kate)_",
-		Replaces: "steve is   ALLERGIC to peanuts",
+		Section:  "Traditions",
+		Entry:    "Game night moved to Fridays. _(2026-08-04, @kate)_",
+		Replaces: "game night is   ON thursdays",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(got, "allergic") {
+	if strings.Contains(got, "Thursdays") {
 		t.Errorf("the superseded entry survived: %q", got)
 	}
 }
@@ -109,16 +109,16 @@ func TestSupersedingMatchesOnASubstringOfTheEntry(t *testing.T) {
 func TestSupersedingSomethingThatIsNotThereFails(t *testing.T) {
 	// Reported back to the model, which can then retry as a plain addition
 	// rather than silently recording a correction to nothing.
-	_, err := applyChange("## People\n- Kate hates boats.\n", change{
-		Section:  "People",
-		Entry:    "Steve is fine with peanuts.",
-		Replaces: "Steve is allergic to peanuts",
+	_, err := applyChange("## Traditions\n- Sunday is a roast.\n", change{
+		Section:  "Traditions",
+		Entry:    "Game night moved to Fridays.",
+		Replaces: "Game night is on Thursdays",
 	})
 
 	if err == nil {
 		t.Fatal("replacing a nonexistent entry should fail")
 	}
-	if !strings.Contains(err.Error(), "Steve is allergic to peanuts") {
+	if !strings.Contains(err.Error(), "Game night is on Thursdays") {
 		t.Errorf("the error should quote what was not found, got %q", err)
 	}
 }
@@ -126,7 +126,7 @@ func TestSupersedingSomethingThatIsNotThereFails(t *testing.T) {
 func TestSupersedingAnEntryFiledElsewhereMovesIt(t *testing.T) {
 	// Re-filing is how a miscategorised memory gets fixed; leaving the original
 	// behind would duplicate the fact into two sections.
-	doc := "## People\n- Thursday is game night.\n\n## Traditions\n- Nobody explains the sandwich.\n"
+	doc := "## Running jokes\n- Thursday is game night.\n\n## Traditions\n- Nobody explains the sandwich.\n"
 
 	got, err := applyChange(doc, change{
 		Section:  "Traditions",
@@ -140,25 +140,39 @@ func TestSupersedingAnEntryFiledElsewhereMovesIt(t *testing.T) {
 	if strings.Count(got, "Thursday is game night") != 1 {
 		t.Errorf("the moved entry was duplicated: %q", got)
 	}
-	if strings.Contains(got, "## People") {
+	if strings.Contains(got, "## Running jokes") {
 		t.Errorf("the emptied section should have been dropped: %q", got)
 	}
 }
 
 func TestAnEntryWithNoSectionIsRefused(t *testing.T) {
-	if _, err := applyChange("", change{Entry: "Steve likes boats."}); err == nil {
+	if _, err := applyChange("", change{Entry: "Thursday is game night."}); err == nil {
 		t.Error("a change with no section should fail")
 	}
 }
 
+func TestATopicalNoteMayNotBeFiledUnderPeople(t *testing.T) {
+	// Otherwise what BeanBot knows about somebody splits between a heading with
+	// their name on it and a loose bullet nothing can find. The refusal is
+	// reported back so the model retries through remember_person.
+	_, err := applyChange("", change{Section: "people", Entry: "Steve hates boats."})
+
+	if err == nil {
+		t.Fatal("the People section is reserved for the Roster")
+	}
+	if !strings.Contains(err.Error(), "remember_person") {
+		t.Errorf("the refusal should name the tool to use instead, got %q", err)
+	}
+}
+
 func TestAnEmptySectionIsRefused(t *testing.T) {
-	if _, err := applyChange("", change{Section: "People", Entry: "   "}); err == nil {
+	if _, err := applyChange("", change{Section: "Traditions", Entry: "   "}); err == nil {
 		t.Error("a change with no entry should fail")
 	}
 }
 
 func TestAWellFormedDocumentSurvivesARoundTrip(t *testing.T) {
-	doc := "## People\n- Steve likes boats.\n\n## Traditions\n- Thursday is game night.\n"
+	doc := "## Traditions\n- Thursday is game night.\n\n## Running jokes\n- Nobody explains the sandwich.\n"
 
 	if got := parseMemory(doc).render(); got != doc {
 		t.Errorf("round trip changed the document:\ngot  %q\nwant %q", got, doc)
@@ -169,24 +183,24 @@ func TestProseWrittenByCompactionIsNotDiscarded(t *testing.T) {
 	// Compaction is a language model writing this file, so it will not always
 	// produce clean bullets. Losing a recorded fact is worse than keeping an
 	// oddly shaped one.
-	doc := "## People\n- Steve likes boats.\n  He owns three of them.\n"
+	doc := "## Traditions\n- Thursday is game night.\n  It has been since 2019.\n"
 
 	got := parseMemory(doc).render()
 
-	if !strings.Contains(got, "He owns three of them.") {
+	if !strings.Contains(got, "It has been since 2019.") {
 		t.Errorf("a continuation line was dropped: %q", got)
 	}
 }
 
 func TestTextAboveTheFirstHeadingIsKept(t *testing.T) {
-	doc := "Notes about this server.\n\n## People\n- Steve likes boats.\n"
+	doc := "Notes about this server.\n\n## Traditions\n- Thursday is game night.\n"
 
 	got := parseMemory(doc).render()
 
 	if !strings.HasPrefix(got, "Notes about this server.") {
 		t.Errorf("the preamble was lost or moved: %q", got)
 	}
-	if !strings.Contains(got, "## People") {
+	if !strings.Contains(got, "## Traditions") {
 		t.Errorf("the section was lost: %q", got)
 	}
 }

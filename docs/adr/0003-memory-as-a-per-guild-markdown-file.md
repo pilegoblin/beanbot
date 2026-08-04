@@ -1,5 +1,7 @@
 # Memory as a per-Guild markdown file on a Fly volume
 
+> Superseded in part by ADR 0004: the whole document is no longer injected into every Trigger, Compaction no longer covers all of it, and "there is no `forget`" has become a rule the Roster depends on rather than an incidental consequence. Everything else below still holds.
+
 BeanBot keeps a markdown document per Guild on a mounted Fly volume, writes to it through a `remember` Capability the model calls, and injects the whole document into every Trigger in that Guild. This partly reverses ADR 0001: BeanBot now holds state of its own, and it is state that a restart can lose.
 
 ## Considered Options

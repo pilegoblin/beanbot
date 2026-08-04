@@ -28,8 +28,15 @@ type Compactor interface {
 // refused, Compaction does nothing. That is what BEANBOT_MEMORY_DIR being unset
 // produces, so the rest of BeanBot needs no special case.
 type Memory struct {
-	dir       string
-	limit     int
+	dir string
+	// limit caps the topical notes, which Compaction rewrites smaller. It does
+	// not cap the Roster: nothing there is ever discarded, and it is affordable
+	// because only the People a conversation touches are read back.
+	limit int
+	// budget caps how much Roster one Trigger carries. The Roster itself has no
+	// ceiling, so this is the only thing between a server that has discussed
+	// four hundred people and a four-hundred-person prompt.
+	budget    int
 	compactor Compactor
 
 	// locks serialises read-modify-write per Guild. Deliberately per-Guild
@@ -45,7 +52,7 @@ type Memory struct {
 // and a MkdirAll here would succeed against the container's ephemeral layer
 // when the volume failed to attach — Memory that looks perfect until the next
 // deploy silently empties it.
-func OpenMemory(dir string, limit int, compactor Compactor) (*Memory, error) {
+func OpenMemory(dir string, limit, budget int, compactor Compactor) (*Memory, error) {
 	if dir == "" {
 		return nil, nil
 	}
@@ -72,7 +79,13 @@ func OpenMemory(dir string, limit int, compactor Compactor) (*Memory, error) {
 		return nil, err
 	}
 
-	return &Memory{dir: dir, limit: limit, compactor: compactor, locks: map[string]*sync.Mutex{}}, nil
+	return &Memory{
+		dir:       dir,
+		limit:     limit,
+		budget:    budget,
+		compactor: compactor,
+		locks:     map[string]*sync.Mutex{},
+	}, nil
 }
 
 // Load returns the Guild's Memory, or empty if there is none. A Memory that
@@ -96,6 +109,29 @@ func (m *Memory) Load(guildID string) string {
 // against the snapshot the model was shown — so a concurrent Trigger's entry
 // cannot be overwritten by a stale base.
 func (m *Memory) Record(guildID string, ch change) error {
+	return m.rewrite(guildID, func(current string) (string, error) {
+		return applyChange(current, ch)
+	})
+}
+
+// RecordPerson applies one change to the Guild's Roster, under the same lock
+// and against the same live file as Record.
+func (m *Memory) RecordPerson(guildID string, ch personChange) error {
+	return m.rewrite(guildID, func(current string) (string, error) {
+		return applyPersonChange(current, ch)
+	})
+}
+
+// Merge folds one Person in the Guild's Roster into another.
+func (m *Memory) Merge(guildID, from, into string) error {
+	return m.rewrite(guildID, func(current string) (string, error) {
+		return applyMerge(current, from, into)
+	})
+}
+
+// rewrite reads, edits and writes the Guild's Memory under its lock, against
+// the file as it is now rather than a snapshot the model was shown seconds ago.
+func (m *Memory) rewrite(guildID string, edit func(string) (string, error)) error {
 	if m == nil {
 		return errors.New("i have nowhere to write things down right now")
 	}
@@ -108,15 +144,31 @@ func (m *Memory) Record(guildID string, ch change) error {
 	unlock := m.lock(guildID)
 	defer unlock()
 
-	updated, err := applyChange(m.read(path), ch)
+	updated, err := edit(m.read(path))
 	if err != nil {
 		return err
 	}
 	return writeFileAtomic(path, updated)
 }
 
-// CompactIfNeeded rewrites the Guild's Memory smaller once it outgrows the
-// limit. It runs detached from the Trigger that provoked it, so nobody waits.
+// Recall is the Memory as it reaches one Trigger: the topical notes whole, the
+// People this conversation touches in full, and everybody else by name only.
+func (m *Memory) Recall(guildID, backlog string, speakers []namedUser) string {
+	if m == nil {
+		return ""
+	}
+	return recall(parseMemory(m.Load(guildID)), backlog, speakers, m.budget)
+}
+
+// CompactIfNeeded rewrites the Guild's topical notes smaller once they outgrow
+// the limit. It runs detached from the Trigger that provoked it, so nobody waits.
+//
+// The Roster is deliberately not part of this. Compaction is a model rewrite of
+// the only copy that exists, and "make this smaller" pointed at a list of humans
+// means merging two thin people into one or dropping whoever has not come up in
+// months. Nothing in the Roster is ever forgotten, so nothing in it is ever
+// shown to the compactor — which is affordable only because the Roster is no
+// longer read back whole on every Trigger.
 //
 // The model call deliberately happens *outside* the Guild's lock. Holding the
 // lock across a call that may take a minute would stall any member who asked
@@ -134,7 +186,7 @@ func (m *Memory) CompactIfNeeded(ctx context.Context, guildID string) error {
 		return err
 	}
 
-	before := m.readUnderLock(guildID, path)
+	before := parseMemory(m.readUnderLock(guildID, path)).topical()
 	if len(before) <= m.limit {
 		return nil
 	}
@@ -160,21 +212,38 @@ func (m *Memory) CompactIfNeeded(ctx context.Context, guildID string) error {
 
 	// Round-tripped through the parser so whatever shape the model chose is
 	// normalised before it becomes the document every later change merges into.
-	normalised := parseMemory(compacted).render()
+	normalised := parseMemory(compacted)
+
+	// The compactor was shown no People at all, so anything it filed under that
+	// heading is either invented or a topical note it decided to re-file. Only
+	// the topical part of its answer is kept, so either way that text would be
+	// dropped — and dropping a recorded fact is the one thing this must not do.
+	// Refusing leaves the notes oversized, which the next Trigger retries.
+	if len(normalised.roster.people) > 0 || len(normalised.roster.orphans) > 0 {
+		return fmt.Errorf("compaction of guild %s wrote under %q, which is not its to write; keeping the original",
+			guildID, rosterHeading)
+	}
 
 	unlock := m.lock(guildID)
 	defer unlock()
 
-	if m.read(path) != before {
-		// Somebody recorded something while the model was working. Writing now
-		// would silently drop it; the next Trigger will find the Memory still
-		// oversized and try again.
+	// Re-read and compare the *topical* notes alone. Somebody recording a note
+	// about a person while the model was working has touched nothing this
+	// rewrite covers, and abandoning for that would leave any server busy enough
+	// to need compacting permanently oversized.
+	current := parseMemory(m.read(path))
+	if current.topical() != before {
+		// Somebody edited what is being rewritten. Writing now would silently
+		// drop it; the next Trigger will find the notes still oversized and try
+		// again.
 		log.Printf("abandoning compaction of guild %s: it changed while the model was working", guildID)
 		return nil
 	}
 
-	log.Printf("compacted memory for guild %s: %d bytes to %d", guildID, len(before), len(normalised))
-	return writeFileAtomic(path, normalised)
+	current.preamble, current.sections = normalised.preamble, normalised.sections
+
+	log.Printf("compacted memory for guild %s: %d bytes to %d", guildID, len(before), len(current.topical()))
+	return writeFileAtomic(path, current.render())
 }
 
 func (m *Memory) readUnderLock(guildID, path string) string {
