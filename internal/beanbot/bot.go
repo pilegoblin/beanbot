@@ -64,7 +64,13 @@ func NewBot(ctx context.Context, prompter *gemini.Prompter, config Config) (*Bea
 	// MessageContent is privileged and must also be enabled in the Discord
 	// developer portal. Without it every message arrives with empty content
 	// and the Backlog is worthless.
-	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
+	//
+	// Guilds populates the state cache with guilds, channels and roles. Without
+	// it every Gate check falls back to three sequential REST calls to work out
+	// what the requesting member is allowed to do.
+	dg.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentMessageContent
 	dg.AddHandler(bb.onMessage(ctx))
 
 	return bb, nil
