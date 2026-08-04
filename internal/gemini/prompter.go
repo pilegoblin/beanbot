@@ -54,8 +54,8 @@ type Prompter struct {
 
 func NewPrompter(ctx context.Context, backstory string) (*Prompter, error) {
 	key, ok := os.LookupEnv("GOOGLE_API_KEY")
-	if !ok {
-		return nil, errors.New("token for Google API not found")
+	if !ok || key == "" {
+		return nil, errors.New("GOOGLE_API_KEY is not set")
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: key})

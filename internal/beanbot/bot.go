@@ -39,8 +39,8 @@ type BeanBot struct {
 
 func NewBot(ctx context.Context, prompter *gemini.Prompter, config Config) (*BeanBot, error) {
 	key, ok := os.LookupEnv("DISCORD_API_KEY")
-	if !ok {
-		return nil, errors.New("token for Discord API not found")
+	if !ok || key == "" {
+		return nil, errors.New("DISCORD_API_KEY is not set")
 	}
 
 	dg, err := discordgo.New("Bot " + key)

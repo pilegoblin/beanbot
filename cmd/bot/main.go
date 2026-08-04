@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -15,9 +17,13 @@ import (
 // defaultBacklogSize is how many recent messages BeanBot reads as context.
 const defaultBacklogSize = 50
 
+// envFile holds configuration during local development. In production the
+// process is configured with real environment variables instead.
+const envFile = ".env"
+
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+	if err := loadEnvFile(); err != nil {
+		log.Fatal(err)
 	}
 
 	backstory := os.Getenv("BEANBOT_BACKSTORY")
@@ -51,6 +57,24 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("BeanBot has exited.")
+}
+
+// loadEnvFile reads .env when it is there. Deployed builds have no such file —
+// the environment is populated from fly secrets — so its absence is normal and
+// not an error. A .env that exists but cannot be parsed still is, since
+// ignoring it would silently run with the wrong configuration.
+func loadEnvFile() error {
+	if _, err := os.Stat(envFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("checking for %s: %w", envFile, err)
+	}
+
+	if err := godotenv.Load(envFile); err != nil {
+		return fmt.Errorf("loading %s: %w", envFile, err)
+	}
+	return nil
 }
 
 // serverTimezone resolves the single timezone every relative time in a Trigger
