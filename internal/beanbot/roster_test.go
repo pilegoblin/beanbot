@@ -7,8 +7,8 @@ import (
 
 func TestANewPersonBecomesAHeadingUnderPeople(t *testing.T) {
 	got, err := applyPersonChange("", personChange{
-		Name: "Steve Steveson",
-		Fact: "Posts on Facebook about model trains.",
+		Name:  "Steve Steveson",
+		Claim: "Posts on Facebook about model trains.",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -24,8 +24,8 @@ func TestASecondFactJoinsThePersonItIsAbout(t *testing.T) {
 	doc := "## People\n\n### Steve Steveson\n- Posts about model trains.\n"
 
 	got, err := applyPersonChange(doc, personChange{
-		Name: "Steve Steveson",
-		Fact: "Has a boat called Wet Dream.",
+		Name:  "Steve Steveson",
+		Claim: "Has a boat called Wet Dream.",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestAPersonIsFoundByAnAliasRatherThanForked(t *testing.T) {
 	// alias matching that is two people, and the notes about him are split.
 	doc := "## People\n\n### Steve Steveson\n<!-- aka: Steve -->\n- Posts about model trains.\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "steve", Fact: "Hates boats."})
+	got, err := applyPersonChange(doc, personChange{Name: "steve", Claim: "Hates boats."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestAPersonIsFoundByAnAliasRatherThanForked(t *testing.T) {
 func TestPersonMatchingIgnoresCase(t *testing.T) {
 	doc := "## People\n\n### Steve Steveson\n- Posts about model trains.\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "steve steveson", Fact: "Hates boats."})
+	got, err := applyPersonChange(doc, personChange{Name: "steve steveson", Claim: "Hates boats."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestAliasesAccumulateWithoutRepeatingTheName(t *testing.T) {
 
 	got, err := applyPersonChange(doc, personChange{
 		Name:    "Steve Steveson",
-		Fact:    "Hates boats.",
+		Claim:   "Hates boats.",
 		Aliases: []string{"Stevo", "steve", "Steve Steveson"},
 	})
 	if err != nil {
@@ -89,9 +89,9 @@ func TestAliasesAccumulateWithoutRepeatingTheName(t *testing.T) {
 
 func TestADiscordIdentityIsRecordedOnThePerson(t *testing.T) {
 	got, err := applyPersonChange("", personChange{
-		Name: "drew",
-		Fact: "Runs the server.",
-		ID:   "424242",
+		Name:  "drew",
+		Claim: "Runs the server.",
+		ID:    "424242",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestAnIdentityAlreadyRecordedIsNeverOverwritten(t *testing.T) {
 	// ever question it. Keeping the first is the recoverable failure.
 	doc := "## People\n\n### drew\n<!-- id: 424242 -->\n- Runs the server.\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "drew", Fact: "Likes boats.", ID: "999999"})
+	got, err := applyPersonChange(doc, personChange{Name: "drew", Claim: "Likes boats.", ID: "999999"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAPersonIsFoundByTheirSnowflakeAfterARename(t *testing.T) {
 	// name alone would strand every fact under a name nobody answers to.
 	doc := "## People\n\n### drew\n<!-- id: 424242 -->\n- Runs the server.\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "Drewseph", Fact: "Likes boats.", ID: "424242"})
+	got, err := applyPersonChange(doc, personChange{Name: "Drewseph", Claim: "Likes boats.", ID: "424242"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestCorrectingAFactAboutAPersonReplacesItInPlace(t *testing.T) {
 
 	got, err := applyPersonChange(doc, personChange{
 		Name:     "Steve Steveson",
-		Fact:     "Not allergic to anything.",
+		Claim:    "Not allergic to anything.",
 		Replaces: "allergic to peanuts",
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func TestCorrectingAFactAboutAPersonReplacesItInPlace(t *testing.T) {
 func TestCorrectingSomethingThatIsNotThereFails(t *testing.T) {
 	_, err := applyPersonChange("## People\n\n### Steve Steveson\n- Hates boats.\n", personChange{
 		Name:     "Steve Steveson",
-		Fact:     "Loves boats.",
+		Claim:    "Loves boats.",
 		Replaces: "allergic to peanuts",
 	})
 
@@ -170,9 +170,9 @@ func TestCorrectingSomethingThatIsNotThereFails(t *testing.T) {
 
 func TestAPersonNeedsANameAndAFact(t *testing.T) {
 	for _, ch := range []personChange{
-		{Fact: "Hates boats."},
+		{Claim: "Hates boats."},
 		{Name: "Steve Steveson"},
-		{Name: "  ", Fact: "Hates boats."},
+		{Name: "  ", Claim: "Hates boats."},
 	} {
 		if _, err := applyPersonChange("", ch); err == nil {
 			t.Errorf("change %+v should have been refused", ch)
@@ -184,8 +184,8 @@ func TestAFactCannotForgeAnIdentityLine(t *testing.T) {
 	// Facts are ungated, member-authored text. A fact that parsed as an identity
 	// line would let anyone staple a snowflake onto anyone.
 	got, err := applyPersonChange("", personChange{
-		Name: "Steve Steveson",
-		Fact: "Hates boats. <!-- id: 424242 -->",
+		Name:  "Steve Steveson",
+		Claim: "Hates boats. <!-- id: 424242 -->",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestAFactCannotForgeAnIdentityLine(t *testing.T) {
 func TestTheRosterAndTheTopicalNotesShareOneDocument(t *testing.T) {
 	doc := "## Traditions\n- Thursday is game night.\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "Steve Steveson", Fact: "Hates boats."})
+	got, err := applyPersonChange(doc, personChange{Name: "Steve Steveson", Claim: "Hates boats."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestAPersonWithNothingButAnIdentityIsNotDroppedOnTheNextWrite(t *testing.T)
 	// which human that name means, and rewriting the file must not lose it.
 	doc := "## People\n\n### Steve Steveson\n<!-- id: 424242; aka: Stevo -->\n"
 
-	got, err := applyPersonChange(doc, personChange{Name: "Kate", Fact: "Restores arcade cabinets."})
+	got, err := applyPersonChange(doc, personChange{Name: "Kate", Claim: "Restores arcade cabinets."})
 	if err != nil {
 		t.Fatal(err)
 	}

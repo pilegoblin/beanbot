@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"google.golang.org/genai"
 )
@@ -47,11 +46,24 @@ func (remember) Declaration() *genai.FunctionDeclaration {
 						"your notes whenever one fits. \"People\" is not available here — notes " +
 						"about a person go in remember_person.",
 				},
-				"entry": {
+				"claim": {
 					Type: genai.TypeString,
 					Description: "The thing to record, as one self-contained sentence. Write it so " +
 						"it still makes sense months from now to someone who cannot see this " +
 						"conversation — name people rather than saying \"he\" or \"they\".",
+				},
+				"said_in": {
+					Type: genai.TypeInteger,
+					Description: "The number printed at the start of the line where this was said. " +
+						"Your notes record who told you a thing and the day they told you, so this " +
+						"must be the line it was actually said on, not the line you are replying " +
+						"to. You cannot cite one of your own lines.",
+				},
+				"said_by": {
+					Type: genai.TypeString,
+					Description: "The name shown on that line, copied exactly. It is checked against " +
+						"the line number, so a miscount is caught rather than filed under whoever " +
+						"happened to speak next.",
 				},
 				"replaces": {
 					Type: genai.TypeString,
@@ -60,7 +72,7 @@ func (remember) Declaration() *genai.FunctionDeclaration {
 						"rewritten in place. Leave this out to record something new.",
 				},
 			},
-			Required: []string{"section", "entry"},
+			Required: []string{"section", "claim", "said_in", "said_by"},
 		},
 	}
 }
@@ -70,30 +82,72 @@ func (r remember) Execute(_ context.Context, inv Execution) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	entry, err := argString(inv.Args, "entry")
+	claim, err := argString(inv.Args, "claim")
+	if err != nil {
+		return Result{}, err
+	}
+	src, err := citation(inv)
 	if err != nil {
 		return Result{}, err
 	}
 
 	ch := change{
 		Section:  section,
-		Entry:    attribute(entry, inv.Author, inv.Now),
+		Claim:    attribute(claim, src),
 		Replaces: optionalString(inv.Args, "replaces"),
 	}
 	if err := r.memory.Record(inv.GuildID, ch); err != nil {
 		return Result{}, err
 	}
 
-	return Result{Summary: fmt.Sprintf("Noted under %q: %s", section, entry)}, nil
+	return Result{Summary: fmt.Sprintf("Noted under %q: %s", section, claim)}, nil
 }
 
-// attribute stamps an entry with when it was recorded and who prompted it.
-// Writes are ungated, so attribution is what lets someone reading the file
-// later tell a shared fact from one member's mischief.
-func attribute(entry, author string, now time.Time) string {
-	who := strings.TrimSpace(author)
+// citation resolves the Source the model named into the Backlog line Go
+// rendered, or refuses in terms the model can act on and retry from.
+//
+// The model points and Go decides. The name it returns is checked against the
+// line and then thrown away: what reaches the file is Discord's own record of
+// who spoke, so no member can type a name into somebody else's mouth. That check
+// is also what makes a miscount fail closed — an ordinal off by one lands on a
+// real neighbouring message under a real different name, and would otherwise
+// file a plausible lie that nothing downstream could ever spot.
+func citation(inv Execution) (source, error) {
+	line, err := argInt(inv.Args, "said_in")
+	if err != nil {
+		return source{}, err
+	}
+	speaker, err := argString(inv.Args, "said_by")
+	if err != nil {
+		return source{}, err
+	}
+
+	if line < 1 || line > len(inv.Sources) {
+		return source{}, fmt.Errorf("there is no line %d in the conversation in front of you — "+
+			"give the number printed at the start of the line this was said on", line)
+	}
+	src := inv.Sources[line-1]
+
+	if src.mine {
+		return source{}, fmt.Errorf("line %d is something you said yourself, and you are not a source "+
+			"for what you already know — point at the line where somebody told you this", line)
+	}
+	if !strings.EqualFold(strings.TrimSpace(speaker), strings.TrimSpace(src.speaker)) {
+		return source{}, fmt.Errorf("line %d is %s, not %s — check the number against the name "+
+			"and give me the line this was really said on", line, src.speaker, speaker)
+	}
+	return src, nil
+}
+
+// attribute stamps a Claim with who said it and the day they said it. Writes are
+// ungated, so this is what lets someone reading the file later tell what the
+// server agreed on from what one member asserted once — and, since the name is
+// now the speaker's rather than the Trigger's, tell a Person's own account of
+// themselves from somebody else's claim about them.
+func attribute(claim string, src source) string {
+	who := strings.TrimSpace(src.speaker)
 	if who == "" {
 		who = "someone"
 	}
-	return fmt.Sprintf("%s _(%s, @%s)_", strings.TrimSpace(entry), now.Format("2006-01-02"), who)
+	return fmt.Sprintf("%s _(%s, @%s)_", strings.TrimSpace(claim), src.at.Format("2006-01-02"), who)
 }

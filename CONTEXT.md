@@ -12,8 +12,12 @@ _Avoid_: Command, invocation, prompt
 Another name a Person is known by, recorded alongside their canonical name so that whatever the channel actually calls them still finds them.
 _Avoid_: Nickname, aka, synonym, handle
 
+**Attribution**:
+The stamp every Memory entry carries, naming who said the thing and the day they said it. Not who caused BeanBot to write it down: nobody ever asks BeanBot to remember anything, so there is no such person.
+_Avoid_: Byline, signature, credit, provenance
+
 **Backlog**:
-The recent messages of the channel a Trigger arrived in, fetched from Discord at request time. BeanBot keeps no conversation state of its own; what it retains beyond the Backlog is Memory, and that holds facts rather than conversation.
+The recent messages of the channel a Trigger arrived in, fetched from Discord at request time, each one numbered so a Claim can name the one it came from. BeanBot keeps no conversation state of its own; what it retains beyond the Backlog is Memory, and that holds Claims rather than conversation.
 _Avoid_: History, context window, session, transcript
 
 **Backstory**:
@@ -24,12 +28,16 @@ _Avoid_: System prompt, personality, character
 Something BeanBot can do beyond talking — creating a Guild Event, generating an Image, speaking a Clip, recording a Memory. Declared to the model as a callable tool and executed in Go.
 _Avoid_: Function, action, command, skill
 
+**Claim**:
+What Memory records — something a Person said, kept with its Attribution rather than as settled truth. BeanBot cannot check anything the channel tells it, so what it files is who said what, and when.
+_Avoid_: Fact, note, entry, observation
+
 **Clip**:
 A short piece of spoken audio BeanBot generates and posts. Made by Gemini 2.5 Flash TTS — the cheapest of the three text-to-speech models, explicitly *not* the 3.1 Flash or 2.5 Pro ones, which both cost double. The model returns headerless PCM; what reaches Discord is a WAV.
 _Avoid_: Audio, sound file, voice note, TTS, recording
 
 **Compaction**:
-The rewriting of an oversized Memory into a shorter one that keeps the same facts. Performed by the model without the Backstory, so the result is faithful rather than in character. It never touches the Roster: a rewrite that shortens is a rewrite that forgets.
+The rewriting of an oversized Memory into a shorter one that keeps the same Claims. Performed by the model without the Backstory, so the result is faithful rather than in character. It never touches the Roster: a rewrite that shortens is a rewrite that forgets.
 _Avoid_: Summarising, pruning, garbage collection
 
 **Configured Timezone**:
@@ -57,11 +65,11 @@ The kind of file a Capability produces — an Image or a Clip. At most one Capab
 _Avoid_: Format, file type, quota
 
 **Memory**:
-What BeanBot knows about one Guild for longer than a conversation — a markdown document, one per Guild, that it writes itself and reads back on every Trigger. It holds attributed facts about the Guild alongside the Roster of the People it has heard of.
+What BeanBot knows about one Guild for longer than a conversation — a markdown document, one per Guild, that it writes itself and reads back on every Trigger. It holds Claims about the Guild alongside the Roster of the People it has heard of.
 _Avoid_: Notes, knowledge base, long-term context, profile
 
 **Merge**:
-The folding of one Person into another once both turn out to be the same human. Every fact moves across and the absorbed name survives as an Alias, so a Merge loses nothing.
+The folding of one Person into another once both turn out to be the same human. Every Claim moves across and the absorbed name survives as an Alias, so a Merge loses nothing.
 _Avoid_: Dedupe, link, combine
 
 **Name Index**:
@@ -73,12 +81,16 @@ Gemini 2.5 Flash Image, the model BeanBot uses to generate and edit images. Expl
 _Avoid_: The image model, Imagen
 
 **Person**:
-A human BeanBot has learned something about — a member of the Guild, or someone who is only ever talked about. Created the first time there is a fact to attach, never by contact alone.
+A human BeanBot has learned something about — a member of the Guild, or someone who is only ever talked about. Created the first time there is a Claim to attach, never by contact alone.
 _Avoid_: Profile, contact, user, entity
 
 **Roster**:
 Every Person in one Guild. The part of Memory BeanBot never discards from, never Compacts, and reads back selectively rather than whole.
 _Avoid_: List, directory, address book, people section
+
+**Source**:
+The Backlog message a Claim was drawn from, and the only thing an Attribution may be built out of. BeanBot's own messages are not eligible: it cannot be the source of what it already knows.
+_Avoid_: Origin, citation, reference
 
 **Voice**:
 One of six prebuilt Gemini voices a Clip may be spoken in, each carrying the characteristic that says what it sounds like. Chosen per Clip by the model, not per deployment: BeanBot does impressions rather than having a voice of its own. Six of the thirty Gemini offers, because the choice is declared on every Trigger whether or not anyone wants a Clip.

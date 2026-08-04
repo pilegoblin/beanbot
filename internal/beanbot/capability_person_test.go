@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func personArgs(name, fact string) map[string]any {
-	return map[string]any{"name": name, "fact": fact}
+func personArgs(name, claim string) map[string]any {
+	return cite(map[string]any{"name": name, "claim": claim}, 2, "drew")
 }
 
 func TestANoteAboutSomebodyIsFiledUnderTheirName(t *testing.T) {
@@ -23,10 +23,46 @@ func TestANoteAboutSomebodyIsFiledUnderTheirName(t *testing.T) {
 		t.Errorf("the person got no entry of their own: %q", got)
 	}
 	if !strings.Contains(got, "Posts on Facebook about model trains.") {
-		t.Errorf("the fact was not recorded: %q", got)
+		t.Errorf("the claim was not recorded: %q", got)
 	}
 	if !strings.Contains(got, "_(2026-08-04, @drew)_") {
 		t.Errorf("the attribution is missing: %q", got)
+	}
+}
+
+func TestANoteAboutSomebodyNamesWhoSaidIt(t *testing.T) {
+	// The Roster holds claims about outsiders who cannot read or correct them, so
+	// the difference between kate's account and drew's repeating of it is most of
+	// what the entry is worth.
+	m := openTestMemory(t, 8<<10, nil)
+
+	inv := memoryExecution(cite(map[string]any{
+		"name":  "Steve Steveson",
+		"claim": "Steve Steveson posts on Facebook about model trains.",
+	}, 1, "kate"))
+
+	if _, err := (rememberPerson{memory: m}).Execute(context.Background(), inv); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := m.Load("424242"); !strings.Contains(got, "_(2026-08-01, @kate)_") {
+		t.Errorf("the note was attributed to the trigger rather than its source: %q", got)
+	}
+}
+
+func TestANoteAboutSomebodyNeedsASourceThatResolves(t *testing.T) {
+	m := openTestMemory(t, 8<<10, nil)
+	r := rememberPerson{memory: m}
+
+	for _, args := range []map[string]any{
+		{"name": "Steve Steveson", "claim": "Posts about model trains."},
+		cite(map[string]any{"name": "Steve Steveson", "claim": "Posts about trains."}, 2, "kate"),
+		cite(map[string]any{"name": "Steve Steveson", "claim": "Posts about trains."}, 3, "BeanBot"),
+		cite(map[string]any{"name": "Steve Steveson", "claim": "Posts about trains."}, 9, "drew"),
+	} {
+		if _, err := r.Execute(context.Background(), memoryExecution(args)); err == nil {
+			t.Errorf("args %v name no usable source and should have been refused", args)
+		}
 	}
 }
 
@@ -119,14 +155,14 @@ func TestANoteAboutSomebodyOutsideAServerIsRefused(t *testing.T) {
 	}
 }
 
-func TestANoteAboutSomebodyNeedsANameAndAFact(t *testing.T) {
+func TestANoteAboutSomebodyNeedsANameAndAClaim(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 	r := rememberPerson{memory: m}
 
 	for _, args := range []map[string]any{
-		{"fact": "Posts about model trains."},
-		{"name": "Steve Steveson"},
-		{"name": "Steve Steveson", "fact": ""},
+		cite(map[string]any{"claim": "Posts about model trains."}, 2, "drew"),
+		cite(map[string]any{"name": "Steve Steveson"}, 2, "drew"),
+		cite(map[string]any{"name": "Steve Steveson", "claim": ""}, 2, "drew"),
 	} {
 		if _, err := r.Execute(context.Background(), memoryExecution(args)); err == nil {
 			t.Errorf("args %v should have been refused", args)

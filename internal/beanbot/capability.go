@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -35,6 +37,11 @@ type Execution struct {
 	// Discord. They are the only names besides the Author's that a snowflake may
 	// be attached to, because they are the only ones Discord stated outright.
 	Mentions []namedUser
+	// Sources are the numbered lines of the Backlog, in the order they were
+	// rendered, so line n is Sources[n-1]. They are what an Attribution is built
+	// from: the model names a line and Go reads the speaker and the day off this,
+	// never off anything the model wrote.
+	Sources  []source
 	Images   []gemini.Image
 	Now      time.Time
 	Location *time.Location
@@ -134,6 +141,25 @@ func argString(args map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("missing required argument %q", key)
 	}
 	return v, nil
+}
+
+// argInt reads a required whole-number argument. The model's arguments arrive
+// as decoded JSON, where every number is a float64 — asserting int finds nothing
+// and a line number the model did supply looks absent instead.
+func argInt(args map[string]any, key string) (int, error) {
+	switch v := args[key].(type) {
+	case float64:
+		return int(v), nil
+	case int:
+		return v, nil
+	case string:
+		// Some models quote a number rather than emitting one. Taking it costs
+		// nothing, and refusing it costs the Claim.
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("missing required argument %q", key)
 }
 
 // optionalString reads an argument that may legitimately be absent.

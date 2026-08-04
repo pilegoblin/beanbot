@@ -183,7 +183,7 @@ func (p *person) recallEntry(budget int) (string, bool) {
 
 	var full strings.Builder
 	full.WriteString(head)
-	for _, fact := range p.facts {
+	for _, fact := range p.claims {
 		full.WriteString("- " + fact + "\n")
 	}
 	if full.Len() <= budget {
@@ -194,8 +194,8 @@ func (p *person) recallEntry(budget int) (string, bool) {
 	size := len(head) + len(marker)
 
 	var kept []string
-	for i := len(p.facts) - 1; i >= 0; i-- {
-		line := "- " + p.facts[i] + "\n"
+	for i := len(p.claims) - 1; i >= 0; i-- {
+		line := "- " + p.claims[i] + "\n"
 		if size+len(line) > budget {
 			break
 		}

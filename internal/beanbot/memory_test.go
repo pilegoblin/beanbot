@@ -105,7 +105,7 @@ func TestAnUnwritableDirectoryIsRefusedAtStartup(t *testing.T) {
 func TestWhatIsRecordedIsWhatIsLoaded(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,7 +125,7 @@ func TestAGuildWithNoMemoryYetReadsAsEmpty(t *testing.T) {
 func TestOneGuildCannotReadAnothersMemory(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
-	if err := m.Record("111", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
+	if err := m.Record("111", change{Section: "Traditions", Claim: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,7 +140,7 @@ func TestAGuildIDThatIsNotASnowflakeIsRefused(t *testing.T) {
 	m := openTestMemory(t, 8<<10, nil)
 
 	for _, id := range []string{"", "../etc/passwd", "12/34", "abc"} {
-		if err := m.Record(id, change{Section: "Traditions", Entry: "x"}); err == nil {
+		if err := m.Record(id, change{Section: "Traditions", Claim: "x"}); err == nil {
 			t.Errorf("guild ID %q should have been refused", id)
 		}
 		if got := m.Load(id); got != "" {
@@ -155,7 +155,7 @@ func TestADisabledMemoryReadsEmptyAndRefusesWrites(t *testing.T) {
 	if got := m.Load("123"); got != "" {
 		t.Errorf("got %q, want empty", got)
 	}
-	if err := m.Record("123", change{Section: "Traditions", Entry: "x"}); err == nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "x"}); err == nil {
 		t.Error("a disabled Memory should refuse to record")
 	}
 	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
@@ -175,7 +175,7 @@ func TestConcurrentRecordsAllSurvive(t *testing.T) {
 			defer wg.Done()
 			if err := m.Record("123", change{
 				Section: "Traditions",
-				Entry:   fmt.Sprintf("fact number %d", i),
+				Claim:   fmt.Sprintf("fact number %d", i),
 			}); err != nil {
 				t.Error(err)
 			}
@@ -195,7 +195,7 @@ func TestASmallMemoryIsLeftAlone(t *testing.T) {
 	compactor := &stubCompactor{out: "## Traditions\n- squashed\n"}
 	m := openTestMemory(t, 8<<10, compactor)
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.CompactIfNeeded(context.Background(), "123"); err != nil {
@@ -214,7 +214,7 @@ func TestAnOversizedMemoryIsReplacedByItsCompaction(t *testing.T) {
 	for i := range 20 {
 		if err := m.Record("123", change{
 			Section: "Traditions",
-			Entry:   fmt.Sprintf("a reasonably wordy fact number %d about somebody", i),
+			Claim:   fmt.Sprintf("a reasonably wordy fact number %d about somebody", i),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +236,7 @@ func TestAFailedCompactionLeavesTheMemoryIntact(t *testing.T) {
 	compactor := &stubCompactor{err: errors.New("the model is having a day")}
 	m := openTestMemory(t, 50, compactor)
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night, always has been."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "Thursday is game night, always has been."}); err != nil {
 		t.Fatal(err)
 	}
 	before := m.Load("123")
@@ -256,7 +256,7 @@ func compactionReturning(t *testing.T, out string) error {
 	t.Helper()
 
 	m := openTestMemory(t, 50, &stubCompactor{out: out})
-	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night, always has been."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "Thursday is game night, always has been."}); err != nil {
 		t.Fatal(err)
 	}
 	before := m.Load("123")
@@ -319,7 +319,7 @@ func TestCompactionDoesNotBlockSomeoneRecordingSomething(t *testing.T) {
 	}
 	m := openTestMemory(t, 20, compactor)
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "a reasonably wordy fact about somebody or other"}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "a reasonably wordy fact about somebody or other"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -328,7 +328,7 @@ func TestCompactionDoesNotBlockSomeoneRecordingSomething(t *testing.T) {
 	<-compactor.entered
 
 	recorded := make(chan error, 1)
-	go func() { recorded <- m.Record("123", change{Section: "Traditions", Entry: "Sunday is a roast."}) }()
+	go func() { recorded <- m.Record("123", change{Section: "Traditions", Claim: "Sunday is a roast."}) }()
 
 	select {
 	case err := <-recorded:
@@ -358,8 +358,8 @@ func crowdedRoster(t *testing.T, m *Memory) {
 
 	for i := range 20 {
 		if err := m.RecordPerson("123", personChange{
-			Name: fmt.Sprintf("Person Number %d", i),
-			Fact: fmt.Sprintf("a reasonably wordy note about person number %d", i),
+			Name:  fmt.Sprintf("Person Number %d", i),
+			Claim: fmt.Sprintf("a reasonably wordy note about person number %d", i),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -377,7 +377,7 @@ func TestTheRosterIsNeverHandedToCompaction(t *testing.T) {
 	for i := range 10 {
 		if err := m.Record("123", change{
 			Section: "Traditions",
-			Entry:   fmt.Sprintf("a reasonably wordy tradition number %d", i),
+			Claim:   fmt.Sprintf("a reasonably wordy tradition number %d", i),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -428,7 +428,7 @@ func TestANoteAboutSomebodyDoesNotAbandonACompaction(t *testing.T) {
 	}
 	m := openTestMemory(t, 20, compactor)
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "a reasonably wordy tradition or other"}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "a reasonably wordy tradition or other"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,7 +436,7 @@ func TestANoteAboutSomebodyDoesNotAbandonACompaction(t *testing.T) {
 	go func() { compaction <- m.CompactIfNeeded(context.Background(), "123") }()
 	<-compactor.entered
 
-	if err := m.RecordPerson("123", personChange{Name: "Kate", Fact: "Restores arcade cabinets."}); err != nil {
+	if err := m.RecordPerson("123", personChange{Name: "Kate", Claim: "Restores arcade cabinets."}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -461,7 +461,7 @@ func TestCompactionLeavesNoTemporaryFilesBehind(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := m.Record("123", change{Section: "Traditions", Entry: "Thursday is game night."}); err != nil {
+	if err := m.Record("123", change{Section: "Traditions", Claim: "Thursday is game night."}); err != nil {
 		t.Fatal(err)
 	}
 

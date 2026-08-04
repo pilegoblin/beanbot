@@ -45,12 +45,28 @@ func (rememberPerson) Declaration() *genai.FunctionDeclaration {
 						"you already have notes about this person, reuse exactly the name they " +
 						"are filed under rather than a new spelling of it.",
 				},
-				"fact": {
+				"claim": {
 					Type: genai.TypeString,
 					Description: "The thing to record about them, as one self-contained " +
 						"sentence. Write it so it still makes sense months from now to someone " +
 						"who cannot see this conversation — name them rather than saying " +
 						"\"he\" or \"they\".",
+				},
+				"said_in": {
+					Type: genai.TypeInteger,
+					Description: "The number printed at the start of the line where this was said. " +
+						"Your notes record who told you a thing and the day they told you, so this " +
+						"must be the line it was actually said on, not the line you are replying " +
+						"to. Where more than one line would do, prefer the one where the person " +
+						"this is about told you themselves — their own account of themselves is " +
+						"worth more than somebody else's claim about them. You cannot cite one of " +
+						"your own lines.",
+				},
+				"said_by": {
+					Type: genai.TypeString,
+					Description: "The name shown on that line, copied exactly. It is checked against " +
+						"the line number, so a miscount is caught rather than filed under whoever " +
+						"happened to speak next.",
 				},
 				"aliases": {
 					Type:  genai.TypeArray,
@@ -66,7 +82,7 @@ func (rememberPerson) Declaration() *genai.FunctionDeclaration {
 						"be rewritten in place. Leave this out to record something new.",
 				},
 			},
-			Required: []string{"name", "fact"},
+			Required: []string{"name", "claim", "said_in", "said_by"},
 		},
 	}
 }
@@ -76,14 +92,18 @@ func (r rememberPerson) Execute(_ context.Context, inv Execution) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
-	fact, err := argString(inv.Args, "fact")
+	claim, err := argString(inv.Args, "claim")
+	if err != nil {
+		return Result{}, err
+	}
+	src, err := citation(inv)
 	if err != nil {
 		return Result{}, err
 	}
 
 	ch := personChange{
 		Name:     name,
-		Fact:     attribute(fact, inv.Author, inv.Now),
+		Claim:    attribute(claim, src),
 		Aliases:  optionalStrings(inv.Args, "aliases"),
 		ID:       inv.identify(name),
 		Replaces: optionalString(inv.Args, "replaces"),
@@ -92,7 +112,7 @@ func (r rememberPerson) Execute(_ context.Context, inv Execution) (Result, error
 		return Result{}, err
 	}
 
-	return Result{Summary: fmt.Sprintf("Noted about %s: %s", name, fact)}, nil
+	return Result{Summary: fmt.Sprintf("Noted about %s: %s", name, claim)}, nil
 }
 
 // identify resolves a name to a Discord snowflake, and only ever from something
@@ -121,7 +141,7 @@ func (inv Execution) identify(name string) string {
 // files a second Steve.
 //
 // Ungated, unlike a deletion would be, because a merge destroys nothing — every
-// fact moves across with its date and attribution, and the absorbed name lives
+// Claim moves across with its Attribution, and the absorbed name lives
 // on as an alias. The worst it can do is weld two unrelated people together,
 // which is visible in the file and repairable.
 type mergePeople struct{ memory *Memory }
