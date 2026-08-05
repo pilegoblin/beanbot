@@ -27,6 +27,12 @@ func (generateImage) Mutating() bool { return false }
 
 func (generateImage) Medium() Medium { return MediumImage }
 
+// Deliberately uncued, for now. Drawing has the same exposure speech had —
+// declared on every Trigger, ungated, and several times the price of a Clip —
+// but nobody has reported it drawing unasked. When somebody does, it is a word
+// list rather than a change of shape.
+func (generateImage) Cues() []string { return nil }
+
 func (generateImage) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "generate_image",
@@ -62,6 +68,8 @@ func (editImage) Mutating() bool { return false }
 // The same Medium as drawing, because it is the same call to the same model at
 // the same price. Redrawing repeatedly is the cheapest way to spend a lot.
 func (editImage) Medium() Medium { return MediumImage }
+
+func (editImage) Cues() []string { return nil }
 
 func (editImage) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{

@@ -6,6 +6,45 @@ import (
 	"testing"
 )
 
+func TestEveryVoiceIsNamedAndDescribed(t *testing.T) {
+	// The names are documentation-only strings that appear in no SDK constant,
+	// so nothing in the type system notices a typo. Characteristics repeat by
+	// design — "firm" covers three — because nothing chooses by label; a blank
+	// one is still a mistake, since the smoke test logs it.
+	for i, v := range Voices {
+		if v.Name == "" {
+			t.Errorf("voice %d has no name", i)
+		}
+		if v.Characteristic == "" {
+			t.Errorf("%s has no characteristic", v.Name)
+		}
+	}
+}
+
+func TestRandomVoiceOnlyEverPicksARealOne(t *testing.T) {
+	// A wrong name does not fail loudly: it reaches Gemini as a rejected
+	// request in the middle of a conversation.
+	known := map[string]bool{}
+	for _, v := range Voices {
+		known[v.Name] = true
+	}
+
+	seen := map[string]bool{}
+	for range 200 {
+		got := RandomVoice()
+		if !known[got] {
+			t.Fatalf("picked %q, which is not in the catalogue", got)
+		}
+		seen[got] = true
+	}
+
+	// Two hundred draws from thirty voices missing more than a few of them
+	// would mean the index is not spread across the slice.
+	if len(seen) < len(Voices)/2 {
+		t.Errorf("200 draws produced only %d of %d voices", len(seen), len(Voices))
+	}
+}
+
 func TestWavHeaderDescribesThePayloadItCarries(t *testing.T) {
 	// Discord plays a WAV and shrugs at headerless PCM, so the 44 bytes in
 	// front of the samples are the whole difference between a clip and a blob.

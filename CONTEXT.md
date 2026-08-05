@@ -5,7 +5,7 @@ A Discord bot with a persona, driven by Gemini. Members talk to it in a channel;
 ## Language
 
 **Trigger**:
-The single Discord message that wakes BeanBot — by naming it, @mentioning it, or replying to something it said. BeanBot never speaks uninvited.
+The single Discord message that wakes BeanBot — by naming it, @mentioning it, or replying to something it said. BeanBot never answers uninvited. It is also the only thing a Cue may be found in: what licenses a Capability is the message that woke him, never the Backlog behind it.
 _Avoid_: Command, invocation, prompt
 
 **Alias**:
@@ -44,6 +44,10 @@ _Avoid_: Summarising, pruning, garbage collection
 The single IANA timezone every relative time in a Trigger is resolved against, set once for the whole deployment. BeanBot has no per-member or per-Guild timezone.
 _Avoid_: Server timezone, local time, user timezone
 
+**Cue**:
+A word a Trigger must contain for a Capability to go On Offer for it. Speech has Cues — aloud, sing, accent — because a Capability the model can see is one it will reach for. Most Capabilities have none and are always On Offer.
+_Avoid_: Keyword, trigger word, wake word
+
 **Gate**:
 The Go-side permission check a Capability passes before it executes, derived from the Discord permissions of the member who sent the Trigger. Lives in code, never in the Backstory, so it cannot be talked around.
 _Avoid_: Guard, auth check, permission
@@ -80,6 +84,10 @@ _Avoid_: Table of contents, directory, summary
 Gemini 2.5 Flash Image, the model BeanBot uses to generate and edit images. Explicitly *not* Nano Banana Pro (Gemini 3 Pro Image), which is a different, costlier model.
 _Avoid_: The image model, Imagen
 
+**On Offer**:
+Of a Capability: declared to the model for this Trigger, and so callable. A withheld one does not exist as far as the model is concerned — which is why a Cue holds where a tool description does not, there being nothing left to talk around.
+_Avoid_: Enabled, available, registered
+
 **Person**:
 A human BeanBot has learned something about — a member of the Guild, or someone who is only ever talked about. Created the first time there is a Claim to attach, never by contact alone.
 _Avoid_: Profile, contact, user, entity
@@ -93,5 +101,5 @@ The Backlog message a Claim was drawn from, and the only thing an Attribution ma
 _Avoid_: Origin, citation, reference
 
 **Voice**:
-One of six prebuilt Gemini voices a Clip may be spoken in, each carrying the characteristic that says what it sounds like. Chosen per Clip by the model, not per deployment: BeanBot does impressions rather than having a voice of its own. Six of the thirty Gemini offers, because the choice is declared on every Trigger whether or not anyone wants a Clip.
+One of the thirty prebuilt Gemini voices a Clip may be spoken in, drawn at random for each one. Nobody chooses — not the deployment, not the model, not BeanBot: a bean computer has no vocal cords and so no voice of its own, and every Clip is borrowed from somebody. How a Clip is delivered is still directable; who it sounds like is not.
 _Avoid_: Speaker, accent, tone, persona

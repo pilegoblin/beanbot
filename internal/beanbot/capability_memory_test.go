@@ -245,7 +245,7 @@ func TestRememberingComposesWithChangingTheGuild(t *testing.T) {
 		remember{memory: m},
 	})
 
-	if _, _, err := a.run(context.Background(), model, "backlog", nil, memoryExecution(nil)); err != nil {
+	if _, _, err := a.run(context.Background(), model, "backlog", nil, memoryExecution(nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 

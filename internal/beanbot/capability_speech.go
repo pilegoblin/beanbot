@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
@@ -42,6 +41,33 @@ func (generateSpeech) Mutating() bool { return false }
 
 func (generateSpeech) Medium() Medium { return MediumClip }
 
+// speechCues are the words that put speech On Offer. Every one of them can
+// only mean sound.
+//
+// "say", "tell" and "announce" are excluded on purpose, and they are the ones
+// worth explaining. They are how people ask for an ordinary answer — "beanbot
+// tell everyone the plan", "what did dave say" — so admitting them would leave
+// speech declared on most Triggers, which is the thing this is for. The cost is
+// that "say it louder" gets typed back rather than spoken.
+//
+// Inflections are listed rather than matched by prefix: prefix matching would
+// take "singapore" for "sing" and "spearmint" for "speak". Every phrasing
+// somebody actually uses and this list lacks is a code change, which is the
+// standing price of deciding this in Go instead of in a prompt.
+var speechCues = []string{
+	"aloud", "out loud", "read out",
+	"speak", "speaks", "speaking", "spoken", "speech",
+	"sing", "sings", "singing", "sung",
+	"voice", "voices",
+	"accent", "accents",
+	"impression", "impressions", "impersonate", "impersonation",
+	"narrate", "narrates", "narration",
+	"whisper", "whispers", "whispering",
+	"audio", "tts",
+}
+
+func (generateSpeech) Cues() []string { return speechCues }
+
 func (generateSpeech) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "generate_speech",
@@ -55,11 +81,6 @@ func (generateSpeech) Declaration() *genai.FunctionDeclaration {
 					Description: fmt.Sprintf("Exactly the words to say aloud, and nothing else — "+
 						"no stage directions, they will be read out. At most %d characters.", maxSpokenChars),
 				},
-				"voice": {
-					Type:        genai.TypeString,
-					Description: "Which voice to use: " + gemini.VoiceMenu() + ".",
-					Enum:        gemini.VoiceNames(),
-				},
 				"style": {
 					Type: genai.TypeString,
 					Description: "Optional direction for the delivery, as a short phrase completing " +
@@ -67,7 +88,7 @@ func (generateSpeech) Declaration() *genai.FunctionDeclaration {
 						"\"barely holding back laughter\". Omit for a straight reading.",
 				},
 			},
-			Required: []string{"words", "voice"},
+			Required: []string{"words"},
 		},
 	}
 }
@@ -85,22 +106,16 @@ func (g generateSpeech) Execute(ctx context.Context, inv Execution) (Result, err
 			n, maxSpokenChars)
 	}
 
-	voice, err := argString(inv.Args, "voice")
-	if err != nil {
-		return Result{}, err
-	}
-	if !gemini.KnownVoice(voice) {
-		return Result{}, fmt.Errorf("i cannot do a voice called %q — pick one of: %s",
-			voice, strings.Join(gemini.VoiceNames(), ", "))
-	}
-
 	style := optionalString(inv.Args, "style")
 	if utf8.RuneCountInString(style) > maxStyleChars {
 		return Result{}, fmt.Errorf("that direction is too long — keep it under %d characters",
 			maxStyleChars)
 	}
 
-	clip, err := g.maker.GenerateSpeech(ctx, words, voice, style)
+	// The voice is drawn here rather than asked of the model: BeanBot is a bean
+	// computer with no vocal cords to have a voice of its own, so every Clip is
+	// borrowed from somebody.
+	clip, err := g.maker.GenerateSpeech(ctx, words, gemini.RandomVoice(), style)
 	if err != nil {
 		return Result{}, err
 	}

@@ -194,8 +194,12 @@ func (bb *BeanBot) think(ctx context.Context, m *discordgo.MessageCreate) (strin
 
 	notes := bb.config.Memory.Recall(m.GuildID, backlog, speakersIn(conversation))
 
-	turn := bb.prompter.NewTurn(bb.agent.declarations)
-	return bb.agent.run(ctx, turn, situate(notes, backlog, now), images, exec)
+	// What the model is shown depends on the Trigger: a Capability it did not
+	// Cue is never declared, so it cannot be reached for.
+	cue := cueing(m.Message, bb.session.State.User.ID)
+
+	turn := bb.prompter.NewTurn(bb.agent.declare(cue))
+	return bb.agent.run(ctx, turn, situate(notes, backlog, now), images, exec, cue)
 }
 
 // situate tells the model where and when it is. It has no clock, so anything
