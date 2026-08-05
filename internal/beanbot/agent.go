@@ -28,7 +28,15 @@ type conversation interface {
 // Capabilities it calls, feed the results back, repeat until it has prose.
 type agent struct {
 	capabilities map[string]Capability
-	declarations []*genai.FunctionDeclaration
+	// offerings keeps the Capabilities in declaration order with their schemas,
+	// which are built once: which Capabilities are On Offer varies per Trigger,
+	// but what each one looks like does not.
+	offerings []offering
+}
+
+type offering struct {
+	capability  Capability
+	declaration *genai.FunctionDeclaration
 }
 
 func newAgent(caps []Capability) *agent {
@@ -36,16 +44,28 @@ func newAgent(caps []Capability) *agent {
 	for _, c := range caps {
 		d := c.Declaration()
 		a.capabilities[d.Name] = c
-		a.declarations = append(a.declarations, d)
+		a.offerings = append(a.offerings, offering{capability: c, declaration: d})
 	}
 	return a
+}
+
+// declare is the set of tools the model is shown for one Trigger. Anything the
+// Trigger did not Cue is left out entirely rather than declared and refused.
+func (a *agent) declare(cue Cueing) []*genai.FunctionDeclaration {
+	declarations := make([]*genai.FunctionDeclaration, 0, len(a.offerings))
+	for _, o := range a.offerings {
+		if onOffer(o.capability, cue) {
+			declarations = append(declarations, o.declaration)
+		}
+	}
+	return declarations
 }
 
 // run returns BeanBot's reply and any files its Capabilities produced.
 //
 // Capability failures are reported back to the model rather than returned as
 // errors: BeanBot should explain a refusal in character, not fall silent.
-func (a *agent) run(ctx context.Context, conv conversation, backlog string, images []gemini.Image, inv Execution) (string, []*discordgo.File, error) {
+func (a *agent) run(ctx context.Context, conv conversation, backlog string, images []gemini.Image, inv Execution, cue Cueing) (string, []*discordgo.File, error) {
 	resp, err := conv.Ask(ctx, backlog, images)
 	if err != nil {
 		return "", nil, err
@@ -60,7 +80,7 @@ func (a *agent) run(ctx context.Context, conv conversation, backlog string, imag
 		results := make([]gemini.FunctionResult, 0, len(resp.FunctionCalls))
 
 		for _, call := range resp.FunctionCalls {
-			result, produced, err := a.invoke(ctx, call, inv, remaining)
+			result, produced, err := a.invoke(ctx, call, inv, remaining, cue)
 			if err != nil {
 				log.Printf("capability %s: %v", call.Name, err)
 				results = append(results, gemini.FunctionResult{Name: call.Name, Err: err.Error()})
@@ -122,9 +142,13 @@ func (b *budget) spend(c Capability) {
 
 // invoke resolves, gates and runs a single Capability. The budget is threaded
 // through so that one Trigger cannot spend without limit.
-func (a *agent) invoke(ctx context.Context, call gemini.FunctionCall, inv Execution, remaining *budget) (string, []*discordgo.File, error) {
+func (a *agent) invoke(ctx context.Context, call gemini.FunctionCall, inv Execution, remaining *budget, cue Cueing) (string, []*discordgo.File, error) {
+	// A Capability the Trigger did not Cue was never declared, and answers here
+	// as though it does not exist — which for this Trigger it does not. The
+	// check is repeated rather than assumed because a model that has been told
+	// to call something can emit the call whether or not it was offered one.
 	capability, ok := a.capabilities[call.Name]
-	if !ok {
+	if !ok || !onOffer(capability, cue) {
 		return "", nil, fmt.Errorf("there is no capability called %q", call.Name)
 	}
 

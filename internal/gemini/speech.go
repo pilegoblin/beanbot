@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 
@@ -26,50 +27,58 @@ type Voice struct {
 	Characteristic string
 }
 
-// Voices is the shortlist BeanBot may speak in, chosen to span the catalogue's
-// range rather than cluster in it. Gemini offers thirty; the declaration goes
-// to the model on every Trigger, so the full list would be a permanent token
-// cost on every conversation in every server to serve a rarely-used tool. Six
-// well-labelled options are also easier to choose between than thirty.
+// Voices is every prebuilt voice Gemini publishes, and BeanBot speaks in one
+// of them at random (ADR 0008).
+//
+// It is the whole catalogue rather than a shortlist because nothing chooses
+// from it by label any more. Six voices were curated when the model picked, and
+// the duplicate characteristics were dropped when the list widened, both on the
+// same reasoning: the name is meaningless astronomy, so two voices labelled
+// "firm" were a choice made blind. A random index does not read the labels, and
+// Kore, Orus and Alnilam do not sound alike merely because one word describes
+// all three. Every voice dropped for being an indistinguishable *option* is a
+// perfectly distinguishable *sound*.
+//
+// The characteristics stay because the live smoke test logs them, and a human
+// listening to thirty clips wants to know which one was supposed to be gravelly.
 var Voices = []Voice{
-	{"Algenib", "gravelly"},
+	{"Zephyr", "bright"},
+	{"Puck", "upbeat"},
+	{"Charon", "informative"},
+	{"Kore", "firm"},
+	{"Fenrir", "excitable"},
 	{"Leda", "youthful"},
-	{"Sulafat", "warm"},
-	{"Alnilam", "firm"},
+	{"Orus", "firm"},
+	{"Aoede", "breezy"},
+	{"Callirrhoe", "easy-going"},
+	{"Autonoe", "bright"},
 	{"Enceladus", "breathy"},
+	{"Iapetus", "clear"},
+	{"Umbriel", "easy-going"},
+	{"Algieba", "smooth"},
+	{"Despina", "smooth"},
+	{"Erinome", "clear"},
+	{"Algenib", "gravelly"},
+	{"Rasalgethi", "informative"},
 	{"Laomedeia", "upbeat"},
+	{"Achernar", "soft"},
+	{"Alnilam", "firm"},
+	{"Schedar", "even"},
+	{"Gacrux", "mature"},
+	{"Pulcherrima", "forward"},
+	{"Achird", "friendly"},
+	{"Zubenelgenubi", "casual"},
+	{"Vindemiatrix", "gentle"},
+	{"Sadachbia", "lively"},
+	{"Sadaltager", "knowledgeable"},
+	{"Sulafat", "warm"},
 }
 
-// VoiceNames is the shortlist as the model is offered it, in shortlist order.
-func VoiceNames() []string {
-	names := make([]string, 0, len(Voices))
-	for _, v := range Voices {
-		names = append(names, v.Name)
-	}
-	return names
-}
-
-// VoiceMenu pairs each name with what it sounds like, for the tool
-// description. Without the characteristics the model is choosing at random.
-func VoiceMenu() string {
-	described := make([]string, 0, len(Voices))
-	for _, v := range Voices {
-		described = append(described, fmt.Sprintf("%s is %s", v.Name, v.Characteristic))
-	}
-	return strings.Join(described, ", ")
-}
-
-// KnownVoice reports whether the shortlist contains this name. The schema's
-// enum already constrains the model, but constrained decoding is a request
-// rather than a guarantee, and an invented name would otherwise reach Gemini
-// as an error we would rather phrase ourselves.
-func KnownVoice(name string) bool {
-	for _, v := range Voices {
-		if v.Name == name {
-			return true
-		}
-	}
-	return false
+// RandomVoice picks the voice a Clip is spoken in. BeanBot does not get to
+// choose and neither does the model: whoever it sounds like this time is the
+// joke.
+func RandomVoice() string {
+	return Voices[rand.IntN(len(Voices))].Name
 }
 
 // Clip is generated speech on its way to a channel, in a container Discord can

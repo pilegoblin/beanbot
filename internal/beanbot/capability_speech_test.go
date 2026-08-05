@@ -25,8 +25,8 @@ func (f *fakeSpeaker) GenerateSpeech(_ context.Context, words, voice, style stri
 	return gemini.Clip{Data: []byte("RIFF....WAVE"), MIME: "audio/wav"}, nil
 }
 
-func speechArgs(words, voice, style string) map[string]any {
-	args := map[string]any{"words": words, "voice": voice}
+func speechArgs(words, style string) map[string]any {
+	args := map[string]any{"words": words}
 	if style != "" {
 		args["style"] = style
 	}
@@ -38,7 +38,7 @@ func TestSpokenWordsReachTheModelAndTheClipReachesTheChannel(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	result, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs("beans are ready", "Algenib", "slow and menacing")))
+		execution(&fakeGuild{}, speechArgs("beans are ready", "slow and menacing")))
 	if err != nil {
 		t.Fatalf("speaking failed: %v", err)
 	}
@@ -46,8 +46,8 @@ func TestSpokenWordsReachTheModelAndTheClipReachesTheChannel(t *testing.T) {
 	if speaker.words != "beans are ready" {
 		t.Errorf("said %q, want the words it was given", speaker.words)
 	}
-	if speaker.voice != "Algenib" {
-		t.Errorf("used voice %q, want Algenib", speaker.voice)
+	if !isRealVoice(speaker.voice) {
+		t.Errorf("spoke as %q, which is not a voice Gemini has", speaker.voice)
 	}
 	if speaker.style != "slow and menacing" {
 		t.Errorf("used style %q, want the one it was given", speaker.style)
@@ -71,7 +71,7 @@ func TestStyleIsOptional(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs("hello", "Leda", ""))); err != nil {
+		execution(&fakeGuild{}, speechArgs("hello", ""))); err != nil {
 		t.Fatalf("a call without a style should succeed: %v", err)
 	}
 	if speaker.style != "" {
@@ -87,7 +87,7 @@ func TestOverlongTextIsRefusedBeforeSpendingAnything(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	_, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs(strings.Repeat("a", maxSpokenChars+1), "Sulafat", "")))
+		execution(&fakeGuild{}, speechArgs(strings.Repeat("a", maxSpokenChars+1), "")))
 	if err == nil {
 		t.Fatal("expected an overlong script to be refused")
 	}
@@ -107,7 +107,7 @@ func TestTextAtTheCapIsAllowed(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs(strings.Repeat("a", maxSpokenChars), "Sulafat", ""))); err != nil {
+		execution(&fakeGuild{}, speechArgs(strings.Repeat("a", maxSpokenChars), ""))); err != nil {
 		t.Fatalf("text exactly at the cap should be allowed: %v", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestTheCapCountsCharactersNotBytes(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs(strings.Repeat("я", maxSpokenChars), "Sulafat", ""))); err != nil {
+		execution(&fakeGuild{}, speechArgs(strings.Repeat("я", maxSpokenChars), ""))); err != nil {
 		t.Fatalf("multibyte text within the cap should be allowed: %v", err)
 	}
 }
@@ -131,7 +131,7 @@ func TestOverlongStyleIsRefused(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs("hi", "Sulafat", strings.Repeat("b", maxStyleChars+1)))); err == nil {
+		execution(&fakeGuild{}, speechArgs("hi", strings.Repeat("b", maxStyleChars+1)))); err == nil {
 		t.Fatal("expected an overlong style to be refused")
 	}
 	if speaker.calls != 0 {
@@ -139,24 +139,59 @@ func TestOverlongStyleIsRefused(t *testing.T) {
 	}
 }
 
-func TestAnUnknownVoiceIsRefused(t *testing.T) {
-	// The schema constrains the model, but a hallucinated voice would reach
-	// Gemini as an error we would rather explain ourselves.
+func TestTheVoiceIsNotTheModelsToChoose(t *testing.T) {
+	// BeanBot is a bean computer with no vocal cords, so it has no voice of its
+	// own to offer and the model has none to pick. A voice argument reaching the
+	// Capability must change nothing about what comes out.
 	speaker := &fakeSpeaker{}
 	cap := generateSpeech{maker: speaker}
 
-	_, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs("hello", "Gandalf", "")))
-	if err == nil {
-		t.Fatal("expected an unknown voice to be refused")
+	declared := generateSpeech{}.Declaration().Parameters.Properties
+	if _, ok := declared["voice"]; ok {
+		t.Error("the model is still being offered a voice to choose")
 	}
-	if speaker.calls != 0 {
-		t.Error("the model was called with a voice it does not have")
+
+	args := speechArgs("hello", "")
+	args["voice"] = "Gandalf"
+	if _, err := cap.Execute(context.Background(), execution(&fakeGuild{}, args)); err != nil {
+		t.Fatalf("an invented voice should be ignored, not refused: %v", err)
 	}
-	// Listing the real ones turns a dead end into a retry.
-	if !strings.Contains(err.Error(), "Algenib") {
-		t.Errorf("refusal %q should name the voices that do exist", err)
+	if speaker.voice == "Gandalf" {
+		t.Error("the model talked beanbot into a voice that does not exist")
 	}
+}
+
+func TestTheVoiceVariesBetweenClips(t *testing.T) {
+	// The joke is that nobody knows who it will sound like. A constant would
+	// pass every other test in this file.
+	cap := generateSpeech{maker: &fakeSpeaker{}}
+	seen := map[string]bool{}
+
+	for range 50 {
+		speaker := &fakeSpeaker{}
+		cap = generateSpeech{maker: speaker}
+		if _, err := cap.Execute(context.Background(),
+			execution(&fakeGuild{}, speechArgs("beans", ""))); err != nil {
+			t.Fatalf("speaking failed: %v", err)
+		}
+		if !isRealVoice(speaker.voice) {
+			t.Fatalf("spoke as %q, which is not a voice Gemini has", speaker.voice)
+		}
+		seen[speaker.voice] = true
+	}
+
+	if len(seen) < 2 {
+		t.Errorf("fifty clips used %d distinct voice(s); the choice is not random", len(seen))
+	}
+}
+
+func isRealVoice(name string) bool {
+	for _, v := range gemini.Voices {
+		if v.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestMissingWordsAreRefused(t *testing.T) {
@@ -164,7 +199,7 @@ func TestMissingWordsAreRefused(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, map[string]any{"voice": "Leda"})); err == nil {
+		execution(&fakeGuild{}, map[string]any{})); err == nil {
 		t.Fatal("expected a call with nothing to say to be refused")
 	}
 	if speaker.calls != 0 {
@@ -177,7 +212,7 @@ func TestAModelFailureIsReturnedNotSwallowed(t *testing.T) {
 	cap := generateSpeech{maker: speaker}
 
 	if _, err := cap.Execute(context.Background(),
-		execution(&fakeGuild{}, speechArgs("hello", "Leda", ""))); err == nil {
+		execution(&fakeGuild{}, speechArgs("hello", ""))); err == nil {
 		t.Fatal("a model failure should reach the agent so it can be narrated")
 	}
 }
@@ -196,30 +231,10 @@ func TestSpeakingIsBudgetedAsAClipAndChangesNothing(t *testing.T) {
 	}
 }
 
-func TestTheDeclaredVoicesAreTheOnesGoWillAccept(t *testing.T) {
-	// Two lists that must agree: the enum the model chooses from, and the
-	// shortlist Go validates against. Drift between them shows up as BeanBot
-	// refusing a voice it advertised.
-	declared := generateSpeech{}.Declaration().Parameters.Properties["voice"].Enum
-
-	if len(declared) != len(gemini.Voices) {
-		t.Fatalf("declared %d voices, shortlist has %d", len(declared), len(gemini.Voices))
-	}
-	for i, v := range gemini.Voices {
-		if declared[i] != v.Name {
-			t.Errorf("declared voice %d is %q, shortlist has %q", i, declared[i], v.Name)
-		}
-	}
-}
-
-func TestTheVoiceDescriptionSaysWhatEachOneSoundsLike(t *testing.T) {
-	// The names are meaningless astronomy. Without the characteristics the
-	// model is choosing at random.
-	description := generateSpeech{}.Declaration().Parameters.Properties["voice"].Description
-
-	for _, v := range gemini.Voices {
-		if !strings.Contains(description, v.Characteristic) {
-			t.Errorf("voice description never says which one is %q", v.Characteristic)
-		}
+func TestTheWholeCatalogueIsInPlay(t *testing.T) {
+	// The shortlist was curated when something chose from it by label. Nothing
+	// does now, so a voice left out is a sound nobody ever hears.
+	if len(gemini.Voices) != 30 {
+		t.Errorf("the catalogue has %d voices, want all 30", len(gemini.Voices))
 	}
 }

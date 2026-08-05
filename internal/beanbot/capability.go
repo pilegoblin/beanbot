@@ -89,6 +89,11 @@ type Capability interface {
 	Mutating() bool
 	// Medium is the kind of file this produces, or NoMedium if it produces none.
 	Medium() Medium
+	// Cues are the words a Trigger must contain before this is declared to the
+	// model at all. Nil is the ordinary case and means always On Offer: only a
+	// Capability the model reaches for unasked needs holding back, and holding
+	// one back costs the ability to discover it by any wording nobody listed.
+	Cues() []string
 	Execute(ctx context.Context, inv Execution) (Result, error)
 }
 

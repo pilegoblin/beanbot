@@ -26,6 +26,8 @@ func (rememberPerson) Mutating() bool { return false }
 
 func (rememberPerson) Medium() Medium { return NoMedium }
 
+func (rememberPerson) Cues() []string { return nil }
+
 func (rememberPerson) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "remember_person",
@@ -149,6 +151,7 @@ type mergePeople struct{ memory *Memory }
 func (mergePeople) RequiredPermission() int64 { return 0 }
 func (mergePeople) Mutating() bool            { return false }
 func (mergePeople) Medium() Medium            { return NoMedium }
+func (mergePeople) Cues() []string            { return nil }
 
 func (mergePeople) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
