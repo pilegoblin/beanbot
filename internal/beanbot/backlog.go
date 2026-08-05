@@ -143,9 +143,29 @@ func displayName(m *discordgo.Message) string {
 	return m.Author.Username
 }
 
+// attachmentKind names an attachment the way a reader would. It says "audio"
+// where the Medium is called a Clip: the Backlog is prose the model reads, not
+// the glossary. Naming Clips at all is safe now that acting on one needs a Cue,
+// and it is what lets "do that one again, out loud" resolve which one.
 func attachmentKind(a *discordgo.MessageAttachment) string {
-	if strings.HasPrefix(strings.ToLower(a.ContentType), "image") {
+	switch mediumOf(a) {
+	case MediumImage:
 		return "image"
+	case MediumClip:
+		return "audio"
 	}
 	return "file"
+}
+
+// mediumOf classifies an attachment as the Medium that would have produced it.
+// Discord states the content type, so this is a fact rather than a guess at the
+// filename.
+func mediumOf(a *discordgo.MessageAttachment) Medium {
+	switch kind := strings.ToLower(a.ContentType); {
+	case strings.HasPrefix(kind, "image"):
+		return MediumImage
+	case strings.HasPrefix(kind, "audio"):
+		return MediumClip
+	}
+	return NoMedium
 }

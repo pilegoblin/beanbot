@@ -44,12 +44,14 @@ type countingCap struct {
 	mutating bool
 	medium   Medium
 	perm     int64
+	cues     []string
 	runs     *int
 }
 
 func (c countingCap) RequiredPermission() int64 { return c.perm }
 func (c countingCap) Mutating() bool            { return c.mutating }
 func (c countingCap) Medium() Medium            { return c.medium }
+func (c countingCap) Cues() []string            { return c.cues }
 func (c countingCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: c.name}
 }
@@ -73,7 +75,7 @@ func TestLoopStopsCallingAfterTheIterationCap(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "spin", runs: &runs}})
 
 	_, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil))
+		execution(&fakeGuild{}, nil), Cueing{})
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -95,7 +97,7 @@ func TestModelRoundTripsAreCappedInTotal(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "spin", runs: &runs}})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -115,7 +117,7 @@ func TestBeanbotStillSpeaksWhenItRunsOutOfRoundTrips(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "spin", runs: &runs}})
 
 	reply, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil))
+		execution(&fakeGuild{}, nil), Cueing{})
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -133,7 +135,7 @@ func TestAFailedMutationDoesNotSpendTheBudget(t *testing.T) {
 	a := newAgent([]Capability{cap})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -152,6 +154,7 @@ type flakyCap struct {
 func (*flakyCap) RequiredPermission() int64 { return 0 }
 func (*flakyCap) Mutating() bool            { return true }
 func (*flakyCap) Medium() Medium            { return NoMedium }
+func (*flakyCap) Cues() []string            { return nil }
 func (*flakyCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "mutate"}
 }
@@ -173,7 +176,7 @@ func TestOnlyOneGuildMutatingCapabilityRunsPerTurn(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "mutate", mutating: true, runs: &runs}})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -189,7 +192,7 @@ func TestNonMutatingCapabilitiesMayChain(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "read", runs: &runs}})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -209,7 +212,7 @@ func TestOnlyOneCapabilityPerMediumRunsPerTurn(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "draw", medium: MediumImage, runs: &runs}})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -230,7 +233,7 @@ func TestEachMediumHasItsOwnBudget(t *testing.T) {
 	})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -250,7 +253,7 @@ func TestTheMediumBudgetIsSeparateFromTheMutationBudget(t *testing.T) {
 	})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -267,7 +270,7 @@ func TestAFailedMediaCallDoesNotSpendTheBudget(t *testing.T) {
 	a := newAgent([]Capability{cap})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -285,6 +288,7 @@ type flakyMediaCap struct {
 func (*flakyMediaCap) RequiredPermission() int64 { return 0 }
 func (*flakyMediaCap) Mutating() bool            { return false }
 func (*flakyMediaCap) Medium() Medium            { return MediumClip }
+func (*flakyMediaCap) Cues() []string            { return nil }
 func (*flakyMediaCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "speak"}
 }
@@ -305,7 +309,7 @@ func TestExceedingTheMediumBudgetIsExplainedToTheModel(t *testing.T) {
 	a := newAgent([]Capability{countingCap{name: "speak", medium: MediumClip, runs: &runs}})
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 
@@ -328,7 +332,7 @@ func TestRefusedCapabilityIsReportedToTheModelNotRaised(t *testing.T) {
 	})
 
 	_, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{perms: 0}, nil))
+		execution(&fakeGuild{perms: 0}, nil), Cueing{})
 	if err != nil {
 		t.Fatalf("a refusal should not fail the turn: %v", err)
 	}
@@ -349,7 +353,7 @@ func TestUnknownCapabilityIsReportedNotFatal(t *testing.T) {
 	a := newAgent(nil)
 
 	if _, _, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil)); err != nil {
+		execution(&fakeGuild{}, nil), Cueing{}); err != nil {
 		t.Fatalf("a hallucinated tool name should not fail the turn: %v", err)
 	}
 
@@ -363,7 +367,7 @@ func TestFilesFromCapabilitiesReachTheChannel(t *testing.T) {
 	a := newAgent([]Capability{fileCap{}})
 
 	_, files, err := a.run(context.Background(), model, "backlog", nil,
-		execution(&fakeGuild{}, nil))
+		execution(&fakeGuild{}, nil), Cueing{})
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -378,6 +382,7 @@ type fileCap struct{}
 func (fileCap) RequiredPermission() int64 { return 0 }
 func (fileCap) Mutating() bool            { return false }
 func (fileCap) Medium() Medium            { return MediumImage }
+func (fileCap) Cues() []string            { return nil }
 func (fileCap) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{Name: "draw"}
 }

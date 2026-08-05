@@ -28,6 +28,10 @@ func (remember) Mutating() bool { return false }
 
 func (remember) Medium() Medium { return NoMedium }
 
+// Nobody ever asks BeanBot to remember anything, so there are no words to wait
+// for. Cueing this one would mean it never ran.
+func (remember) Cues() []string { return nil }
+
 func (remember) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
 		Name: "remember",

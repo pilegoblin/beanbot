@@ -156,6 +156,21 @@ func TestBacklogNotesAttachments(t *testing.T) {
 	}
 }
 
+func TestBacklogNamesClipsAsAudio(t *testing.T) {
+	// A Clip rendered as a nameless "file" leaves the model unable to answer
+	// "do that one again, out loud" — it cannot tell which line was the sound.
+	m := msg("BeanBot", botID, "friday at eight, obviously", "14:02")
+	m.Attachments = []*discordgo.MessageAttachment{
+		{Filename: "beanbot.wav", ContentType: "audio/wav"},
+	}
+
+	got, _ := renderBacklog([]*discordgo.Message{m}, botID, time.UTC)
+
+	if !strings.Contains(got, "[audio: beanbot.wav]") {
+		t.Errorf("expected the clip named as audio, got:\n%s", got)
+	}
+}
+
 func TestBacklogSkipsEmptyMessages(t *testing.T) {
 	// Joins, pins and embed-only messages carry no text and would render as
 	// content-free noise.
